@@ -19,20 +19,35 @@ export default function LoginPage() {
     setLoading(true)
 
     try {
-      const { error: signInError } = await supabase.auth.signInWithPassword({
+      console.log('Attempting login with:', email)
+
+      const { data, error: signInError } = await supabase.auth.signInWithPassword({
         email,
         password,
       })
 
+      console.log('Login response:', { data, error: signInError })
+
       if (signInError) {
+        console.error('Sign in error:', signInError)
         setError(signInError.message)
         return
       }
 
+      if (!data.session) {
+        console.error('No session returned')
+        setError('Login successful but no session created. Please try again.')
+        return
+      }
+
+      console.log('Login successful, redirecting...')
+
+      // Wait a moment for session to be set
+      await new Promise(resolve => setTimeout(resolve, 500))
       router.push('/projects')
     } catch (err) {
+      console.error('Login error:', err)
       setError('An error occurred. Please try again.')
-      console.error(err)
     } finally {
       setLoading(false)
     }
