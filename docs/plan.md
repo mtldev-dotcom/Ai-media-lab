@@ -15,7 +15,7 @@ Building an **all-in-one AI media creation workspace** that solves the fragmenta
 1. **Project-Centric**: Everything lives inside projects (images, videos, audio, scripts, costs)
 2. **Cost Transparency**: Every generation shows provider, tokens, cost, running totals
 3. **Mobile-First**: Thumb-friendly PWA optimized for touch
-4. **Multi-Provider**: Support for nano banana pro, veo3, fal.ai, openrouter, openai, anthropic, etc.
+4. **Multi-Provider**: Support for Gemini, Imagen, Veo, OpenRouter, OpenAI, Anthropic, FAL, Nano Banana, and more
 5. **User-Owned Keys**: Users bring their own API keys (encrypted in DB)
 
 ---
@@ -23,14 +23,14 @@ Building an **all-in-one AI media creation workspace** that solves the fragmenta
 ## Tech Stack
 
 ### Frontend
-- **Next.js 15** (App Router) - Mobile-first PWA
+- **Next.js 16** (App Router + Turbopack) - Mobile-first PWA
 - **TypeScript** - Type safety
 - **Tailwind CSS** - Mobile-first styling
 - **shadcn/ui** - Accessible components
 - **Serwist** - PWA (Service Worker)
 
 ### Backend & Database
-- **Supabase (Self-Hosted)** - PostgreSQL + Auth + Storage + RLS
+- **Supabase (Cloud)** - PostgreSQL + Auth + Storage + RLS
 - **PostgreSQL** - Complex analytics queries, ACID compliance, JSON support
 
 ### State Management
@@ -39,26 +39,42 @@ Building an **all-in-one AI media creation workspace** that solves the fragmenta
 
 ### Security
 - **AES-256-GCM** - API key encryption with Scrypt key derivation
-- **Supabase Auth** - JWT-based authentication
+- **Supabase Auth** - Cookie-based authentication via `@supabase/ssr`
 - **Row-Level Security** - Database-level access control
 
 ---
 
 ## Implementation Phases (11 Total)
 
-| Phase | Title | Duration | Status |
-|-------|-------|----------|--------|
-| 1 | Foundation | Week 1-2 | Pending |
-| 2 | Project Management | Week 3 | Pending |
-| 3 | API Key Management & Encryption | Week 4 | Pending |
-| 4 | Provider Integration | Week 5-6 | Pending |
-| 5 | Generation UI & Basic Generation | Week 7 | Pending |
-| 6 | Asset Management | Week 8 | Pending |
-| 7 | Cost Tracking & Analytics | Week 9-10 | Pending |
-| 8 | Additional Providers & Media Types | Week 11-12 | Pending |
-| 9 | Asset Conversion & Advanced Features | Week 13 | Pending |
-| 10 | PWA & Polish | Week 14-15 | Pending |
-| 11 | Testing & Deployment | Week 16 | Pending |
+| Phase | Title | Status |
+|-------|-------|--------|
+| 1 | Foundation & Authentication | ✅ Complete |
+| 2 | Project Management | ✅ Complete |
+| 3 | API Key Management & Encryption | ✅ Complete |
+| 4 | Provider Integration | ✅ Complete |
+| 5 | Generation UI & Basic Generation | ✅ Complete |
+| 6 | Asset Management | 🔄 Next |
+| 7 | Cost Tracking & Analytics | 📋 Planned |
+| 8 | Additional Providers & Media Types | 📋 Planned |
+| 9 | Asset Conversion & Advanced Features | 📋 Planned |
+| 10 | PWA & Polish | 📋 Planned |
+| 11 | Testing & Deployment | 📋 Planned |
+
+**Legend**: ✅ Complete | 🔄 Next Up | 📋 Planned
+
+### Phase 5 Completion Notes (Feb 17, 2026)
+
+Phase 5 is fully operational with:
+- Generation form with provider/model selection, prompt input, and parameter controls
+- Text generation (GPT-4o, Claude, Gemini 2.5/3.0)
+- Image generation (Imagen 4, Gemini Image, DALL-E 3, Flux via FAL)
+- Video generation (Veo 3.1, Veo 2.0)
+- Dynamic model discovery from provider APIs
+- Generation result display (text, image, video, audio) with fullscreen, download, copy
+- Generation history per project
+- Async generation with polling for status updates
+- Cost estimation before generation
+- 7 registered providers: OpenAI, Anthropic, Gemini, OpenRouter, FAL, Nano Banana, Veo3
 
 ---
 
@@ -70,8 +86,8 @@ Building an **all-in-one AI media creation workspace** that solves the fragmenta
 - **provider_configs** - Provider priority, budgets, fallbacks
 - **provider_health** - Health monitoring for providers
 - **projects** - User projects with budgets
-- **assets** - Generated images, videos, audio, text
-- **generations** - AI API call tracking with cost
+- **assets** - Generated media files
+- **generations** - AI API call tracking with cost and results
 - **usage_analytics** - Aggregated usage stats
 - **budget_alerts** - Budget threshold alerts
 - **conversion_jobs** - Asset transformation tracking
@@ -84,25 +100,28 @@ Building an **all-in-one AI media creation workspace** that solves the fragmenta
 /ai-medialab/
 ├── /docs                    # Documentation
 │   ├── plan.md             # This file
-│   ├── tasks.md            # Task tracking
-│   ├── progress.md         # Implementation progress
-│   └── architecture.md     # Technical deep-dive
+│   ├── architecture.md     # Technical deep-dive
+│   └── SESSION_2026-02-17.md  # Session notes
 │
 ├── /web                     # Next.js application
 │   ├── /public
 │   ├── /src
-│   │   ├── /app
-│   │   ├── /components
-│   │   ├── /lib
-│   │   ├── /hooks
-│   │   ├── /stores
-│   │   ├── /types
-│   │   └── /styles
-│   ├── /supabase
+│   │   ├── /app            # App Router pages & API routes
+│   │   ├── /components     # React components
+│   │   ├── /lib            # Core libraries (AI, crypto, DB)
+│   │   ├── /hooks          # React Query hooks
+│   │   ├── /stores         # Zustand stores
+│   │   ├── /types          # TypeScript types
+│   │   └── /styles         # Global styles
+│   ├── /supabase           # Migrations
 │   ├── package.json
-│   └── next.config.js
+│   └── next.config.ts
 │
-└── README.md               # Project overview
+├── README.md               # Project overview
+├── USER_GUIDE.md           # Testing & usage guide
+├── FUTURE_IMPLEMENTATIONS.md  # Detailed roadmap
+├── PRODUCTION_DEPLOYMENT.md   # Deployment guide
+└── SUPABASE_CLOUD_SETUP.md   # Supabase setup guide
 ```
 
 ---
@@ -110,51 +129,22 @@ Building an **all-in-one AI media creation workspace** that solves the fragmenta
 ## Success Criteria
 
 ### MVP (Minimum Viable Product)
-- [ ] User can sign up and log in
-- [ ] User can add encrypted API keys for OpenAI and Anthropic
-- [ ] User can create projects
-- [ ] User can generate text and images
-- [ ] User can view generated assets
-- [ ] User can see cost per generation
+- [x] User can sign up and log in
+- [x] User can add encrypted API keys for multiple providers
+- [x] User can create projects
+- [x] User can generate text and images
+- [x] User can view generated assets in project
+- [x] User can see cost per generation
 - [ ] User can view project cost totals
 - [ ] Mobile-optimized UI works on iOS and Android
 - [ ] PWA is installable
 
 ### Post-MVP
-- [ ] Video and audio generation
 - [ ] Asset conversions (image → video)
-- [ ] Provider health monitoring and fallbacks
 - [ ] Budget alerts
 - [ ] Advanced analytics dashboard
 - [ ] Batch operations
 - [ ] Offline support
-
----
-
-## Key Files to Create (Priority Order)
-
-### Priority 1: Foundation
-1. `/web/supabase/migrations/001_initial_schema.sql` - Database schema
-2. `/web/src/lib/db/client.ts` - Supabase client setup
-3. `/web/src/lib/auth/session.ts` - Session management
-4. `/web/src/middleware.ts` - Auth middleware
-
-### Priority 2: Security
-5. `/web/src/lib/crypto/encryption.ts` - API key encryption
-6. `/web/src/lib/crypto/api-key-manager.ts` - API key CRUD
-
-### Priority 3: Provider System
-7. `/web/src/lib/ai/base-provider.ts` - Provider interface
-8. `/web/src/lib/ai/provider-factory.ts` - Provider instantiation
-9. `/web/src/lib/ai/provider-router.ts` - Routing logic
-
-### Priority 4: Cost Tracking
-11. `/web/src/lib/cost/calculator.ts` - Cost calculation
-12. `/web/src/lib/cost/pricing-data.ts` - Pricing tables
-
-### Priority 5: Core API
-13. `/web/src/app/api/generate/route.ts` - Main generation endpoint
-14. `/web/src/app/api/projects/route.ts` - Projects API
 
 ---
 
@@ -176,9 +166,9 @@ ENCRYPTION_MASTER_KEY=your_64_char_random_string
 ---
 
 ## Next Steps
-1. Initialize Next.js project structure
-2. Set up database schema
-3. Configure authentication
-4. Begin Phase 1 implementation
+1. Phase 6: Asset Management — Supabase Storage for generated media, asset CRUD
+2. Phase 7: Cost Tracking & Analytics — Dashboard, budget alerts
+3. Phase 8: Additional Providers & Media Types — Audio generation, more providers
 
-See `progress.md` for current implementation status and `tasks.md` for detailed task tracking.
+See [FUTURE_IMPLEMENTATIONS.md](../FUTURE_IMPLEMENTATIONS.md) for detailed roadmap.
+See [SESSION_2026-02-17.md](./SESSION_2026-02-17.md) for latest session notes.

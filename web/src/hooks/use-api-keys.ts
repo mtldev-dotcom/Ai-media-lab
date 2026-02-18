@@ -1,7 +1,6 @@
 'use client'
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { getCurrentUser } from '@/lib/db/client'
 import type { APIKeyWithoutSecret } from '@/types'
 
 const API_KEYS_QUERY_KEY = ['api-keys']
@@ -13,11 +12,6 @@ export function useAPIKeys() {
   return useQuery({
     queryKey: API_KEYS_QUERY_KEY,
     queryFn: async () => {
-      const user = await getCurrentUser()
-      if (!user) {
-        throw new Error('Not authenticated')
-      }
-
       const response = await fetch('/api/api-keys')
       if (!response.ok) {
         throw new Error('Failed to fetch API keys')

@@ -1,23 +1,27 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, use } from 'react'
 import { useRouter } from 'next/navigation'
 import { useProject, useProjectStats, useDeleteProject } from '@/hooks/use-projects'
+import { useGenerations } from '@/hooks/use-generations'
+import { GenerationResult } from '@/components/generation/generation-result'
 import { Header } from '@/components/layout/header'
 import { BottomNavSpacer } from '@/components/layout/bottom-nav'
 import { formatCurrency } from '@/lib/utils'
 import Link from 'next/link'
-import { FileImage, Zap, BarChart3, ArrowLeft, Trash2 } from 'lucide-react'
+import { FileImage, Zap, BarChart3, Trash2, Loader2 } from 'lucide-react'
 
 interface ProjectPageProps {
-  params: { id: string }
+  params: Promise<{ id: string }>
 }
 
 export default function ProjectPage({ params }: ProjectPageProps) {
+  const { id } = use(params)
   const router = useRouter()
   const [activeTab, setActiveTab] = useState<'assets' | 'generate' | 'analytics'>('assets')
-  const { data: project, isLoading: projectLoading } = useProject(params.id)
-  const { data: stats } = useProjectStats(params.id)
+  const { data: project, isLoading: projectLoading } = useProject(id)
+  const { data: stats } = useProjectStats(id)
+  const { data: generations, isLoading: generationsLoading } = useGenerations(id)
   const deleteProjectMutation = useDeleteProject()
 
   const handleDelete = async () => {
@@ -25,7 +29,7 @@ export default function ProjectPage({ params }: ProjectPageProps) {
       return
     }
 
-    await deleteProjectMutation.mutateAsync(params.id)
+    await deleteProjectMutation.mutateAsync(id)
     router.push('/projects')
   }
 
@@ -183,11 +187,31 @@ export default function ProjectPage({ params }: ProjectPageProps) {
         {/* Tab Content */}
         <div className="bg-white dark:bg-slate-900 rounded-lg border border-slate-200 dark:border-slate-800 p-6">
           {activeTab === 'assets' && (
-            <div className="text-center py-12">
-              <FileImage className="w-12 h-12 text-slate-400 mx-auto mb-3" />
-              <p className="text-slate-600 dark:text-slate-400">
-                Assets will appear here as you generate media
-              </p>
+            <div>
+              {generationsLoading ? (
+                <div className="flex items-center justify-center py-12">
+                  <Loader2 className="w-6 h-6 text-slate-400 animate-spin" />
+                </div>
+              ) : generations && generations.length > 0 ? (
+                <div className="space-y-3">
+                  {generations.map((gen) => (
+                    <GenerationResult key={gen.id} generation={gen} />
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-12">
+                  <FileImage className="w-12 h-12 text-slate-400 mx-auto mb-3" />
+                  <p className="text-slate-600 dark:text-slate-400 mb-4">
+                    No generations yet. Create your first one!
+                  </p>
+                  <Link
+                    href={`/projects/${id}/generate`}
+                    className="inline-block bg-blue-600 hover:bg-blue-500 text-white font-medium py-2 px-6 rounded-lg transition"
+                  >
+                    Generate Content
+                  </Link>
+                </div>
+              )}
             </div>
           )}
 
@@ -198,7 +222,7 @@ export default function ProjectPage({ params }: ProjectPageProps) {
                 Ready to generate content for this project
               </p>
               <Link
-                href={`/projects/${params.id}/generate`}
+                href={`/projects/${id}/generate`}
                 className="inline-block bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-6 rounded-lg transition"
               >
                 Start Generating

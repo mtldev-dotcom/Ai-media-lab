@@ -1,10 +1,11 @@
-import { supabase } from '@/lib/db/client'
+import { supabase as defaultClient } from '@/lib/db/client'
 import type { Project, CreateProjectInput, UpdateProjectInput } from '@/types'
+import type { SupabaseClient } from '@supabase/supabase-js'
 
 /**
  * Get all projects for the current user
  */
-export async function getProjects(userId: string) {
+export async function getProjects(userId: string, supabase: SupabaseClient = defaultClient) {
   const { data, error } = await supabase
     .from('projects')
     .select('*')
@@ -23,8 +24,8 @@ export async function getProjects(userId: string) {
 /**
  * Get a single project by ID
  */
-export async function getProject(projectId: string) {
-  const { data, error } = await supabase
+export async function getProject(projectId: string, supabase: SupabaseClient = defaultClient) {
+  const { data, error} = await supabase
     .from('projects')
     .select('*')
     .eq('id', projectId)
@@ -41,7 +42,7 @@ export async function getProject(projectId: string) {
 /**
  * Create a new project
  */
-export async function createProject(userId: string, input: CreateProjectInput) {
+export async function createProject(userId: string, input: CreateProjectInput, supabase: SupabaseClient = defaultClient) {
   const { data, error } = await supabase
     .from('projects')
     .insert({
@@ -66,7 +67,7 @@ export async function createProject(userId: string, input: CreateProjectInput) {
 /**
  * Update a project
  */
-export async function updateProject(projectId: string, input: UpdateProjectInput) {
+export async function updateProject(projectId: string, input: UpdateProjectInput, supabase: SupabaseClient = defaultClient) {
   const { data, error } = await supabase
     .from('projects')
     .update({
@@ -91,7 +92,7 @@ export async function updateProject(projectId: string, input: UpdateProjectInput
 /**
  * Delete a project (soft delete - archive)
  */
-export async function deleteProject(projectId: string) {
+export async function deleteProject(projectId: string, supabase: SupabaseClient = defaultClient) {
   const { data, error } = await supabase
     .from('projects')
     .update({
@@ -113,7 +114,7 @@ export async function deleteProject(projectId: string) {
 /**
  * Get project statistics
  */
-export async function getProjectStats(projectId: string) {
+export async function getProjectStats(projectId: string, supabase: SupabaseClient = defaultClient) {
   // Get generation count
   const { count: generationCount } = await supabase
     .from('generations')
@@ -147,7 +148,7 @@ export async function getProjectStats(projectId: string) {
 /**
  * Search projects by name
  */
-export async function searchProjects(userId: string, query: string) {
+export async function searchProjects(userId: string, query: string, supabase: SupabaseClient = defaultClient) {
   const { data, error } = await supabase
     .from('projects')
     .select('*')

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getCurrentUser } from '@/lib/db/client'
+import { getCurrentUser, createClient } from '@/lib/db/supabase-server'
 import * as projectQueries from '@/lib/db/queries/projects'
 import { z } from 'zod'
 import type { APIResponse } from '@/types'
@@ -37,7 +37,8 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    const projects = await projectQueries.getProjects(user.id)
+    const supabase = await createClient()
+    const projects = await projectQueries.getProjects(user.id, supabase)
 
     return NextResponse.json<APIResponse<any>>({
       success: true,
@@ -81,7 +82,8 @@ export async function POST(request: NextRequest) {
     // Validate input
     const validatedData = CreateProjectSchema.parse(body)
 
-    const newProject = await projectQueries.createProject(user.id, validatedData)
+    const supabase = await createClient()
+    const newProject = await projectQueries.createProject(user.id, validatedData, supabase)
 
     return NextResponse.json<APIResponse<any>>(
       {

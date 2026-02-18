@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getCurrentUser } from '@/lib/db/client'
+import { getCurrentUser, createClient } from '@/lib/db/supabase-server'
 import * as apiKeyManager from '@/lib/crypto/api-key-manager'
 import { z } from 'zod'
 import type { APIResponse } from '@/types'
@@ -34,7 +34,9 @@ export async function PUT(
     const body = await request.json()
     const validatedData = UpdateAPIKeyStatusSchema.parse(body)
 
+    const supabase = await createClient()
     const updatedKey = await apiKeyManager.updateAPIKeyStatus(
+      supabase,
       id,
       user.id,
       validatedData.is_active
@@ -95,7 +97,8 @@ export async function DELETE(
       )
     }
 
-    await apiKeyManager.deleteAPIKey(id, user.id)
+    const supabase = await createClient()
+    await apiKeyManager.deleteAPIKey(supabase, id, user.id)
 
     return NextResponse.json<APIResponse<null>>({
       success: true,

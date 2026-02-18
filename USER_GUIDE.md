@@ -20,17 +20,16 @@ Complete step-by-step guide for testing all features and flows in the applicatio
 ### Prerequisites
 
 Before testing, ensure:
-- ✅ Docker Compose running (`docker compose up -d`)
-- ✅ Application running (`npm run dev`)
+- ✅ Supabase Cloud project set up (see [SUPABASE_CLOUD_SETUP.md](./SUPABASE_CLOUD_SETUP.md))
+- ✅ Application running (`cd web && npm run dev`)
 - ✅ Access to http://localhost:3000
-- ✅ API keys from at least one provider (OpenAI or Anthropic recommended)
+- ✅ API keys from at least one provider (Google/Gemini or OpenRouter recommended — most capabilities)
 
 ### Check Application Status
 
 1. Open http://localhost:3000 in browser
 2. Should redirect to `/login` if not authenticated
-3. Database should be initialized with all tables
-4. Verify in Docker: `docker compose logs postgres` should show successful startup
+3. Database should be initialized with all tables (via Supabase Cloud SQL Editor)
 
 ---
 
@@ -116,23 +115,23 @@ Before testing, ensure:
 
 ## API Key Management
 
-### Test 5: Add API Key - OpenAI
+### Test 5: Add API Key
 
-**Objective:** Store encrypted OpenAI API key
+**Objective:** Store encrypted provider API key
 
-**Prerequisites:**
-- OpenAI API key (get from https://platform.openai.com/api-keys)
+**Supported Providers:**
+- **Google/Gemini** (recommended) — text, image (Imagen 4), video (Veo) — get key from https://aistudio.google.com/apikey
+- **OpenRouter** — 400+ models via single key — get key from https://openrouter.ai/keys
+- **OpenAI** — text (GPT-4o), image (DALL-E 3) — get key from https://platform.openai.com/api-keys
+- **Anthropic** — text (Claude) — get key from https://console.anthropic.com/
+- **FAL** — image (Flux, Stable Diffusion) — get key from https://fal.ai/dashboard/keys
 
 **Steps:**
 1. Login to application
-2. Go to **Settings** → **API Keys** (or `/settings/api-keys`)
-3. Click **Add API Key** button
-4. Fill in:
-   - **Provider**: Select "OpenAI"
-   - **API Key**: Paste your OpenAI key
-   - **Key Name**: "OpenAI GPT-4o" (optional but helpful)
-5. Click **Add**
-6. Should show success message
+2. Go to **Settings** (sidebar) → find your provider section
+3. Paste your API key in the input field
+4. Click **Save**
+5. Should show success message
 
 **Expected Result:**
 - ✅ Key added to list (masked: `sk-...YZ`)
@@ -154,22 +153,18 @@ WHERE user_id = 'your_user_id';
 
 ---
 
-### Test 6: Add API Key - Anthropic
+### Test 6: Add Multiple Provider Keys
 
 **Objective:** Support multiple providers
 
-**Prerequisites:**
-- Anthropic API key (get from https://console.anthropic.com/)
-
 **Steps:**
-1. Same as Test 5 but select **Anthropic** as provider
-2. Paste Anthropic key
-3. Name it "Claude 3.5"
+1. Repeat Test 5 for additional providers (Google, OpenRouter, OpenAI, Anthropic, FAL)
+2. Each provider has its own section on the Settings page
 
 **Expected Result:**
-- ✅ Both OpenAI and Anthropic keys in list
+- ✅ Multiple providers show as configured
 - ✅ Each shows correct provider name
-- ✅ Both marked as active
+- ✅ All available in generation form's provider dropdown
 
 ---
 
@@ -385,51 +380,68 @@ ORDER BY created_at DESC LIMIT 1;
 
 ---
 
-### Test 17: Image Generation - DALL-E 3
+### Test 17: Image Generation - Gemini/Imagen
 
-**Objective:** Generate images with OpenAI
+**Objective:** Generate images with Google Imagen 4
 
 **Steps:**
 1. Go to project → Generate tab
 2. Click **Image** button
-3. Provider: OpenAI
-4. Model: "dall-e-3"
+3. Provider: Google
+4. Model: select an Imagen model (e.g., `imagen-4.0-generate-001`) or Gemini Image (`gemini-3-pro-image-preview`)
 5. Prompt: "A serene landscape with mountains and lake at sunset"
-6. Advanced Settings:
-   - Size: 1024x1024
-   - Quality: hd
-   - Style: natural
-7. Cost estimate should show (~$0.08 for HD)
-8. Click **Generate Image**
+6. Click **Generate**
 
 **Expected Result:**
 - ✅ Image generation starts
-- ✅ Takes 30-60 seconds
-- ✅ Image URL appears
-- ✅ Can view full size image
-- ✅ Cost correctly calculated
+- ✅ Takes 5-30 seconds
+- ✅ Image renders inline with hover controls (fullscreen, download)
+- ✅ Cost shown in metadata row
+- ✅ Image appears in generation history
 
 ---
 
-### Test 18: Image Generation - FAL.ai
+### Test 18: Image Generation - Other Providers
 
-**Objective:** Test alternative image provider
+**Objective:** Test alternative image providers
 
-**Prerequisites:**
-- FAL.ai API key added
-- Cost might be different than DALL-E
+**Providers to test:**
+- **OpenAI** → DALL-E 3 (1024x1024)
+- **FAL** → Flux Pro, Stable Diffusion
+- **OpenRouter** → Various image models
 
 **Steps:**
-1. Same as Test 17
-2. Select **FAL** provider
-3. Model: "flux-pro"
-4. Same prompt
-5. Generate
+1. Same as Test 17, select different provider
+2. Choose appropriate model
+3. Generate and compare
 
 **Expected Result:**
-- ✅ Different image (Flux style)
-- ✅ Faster generation typically
-- ✅ Different cost
+- ✅ Different styles per provider/model
+- ✅ Different costs
+- ✅ All render correctly in result display
+
+---
+
+### Test 18b: Video Generation - Veo
+
+**Objective:** Generate video with Google Veo
+
+**Prerequisites:**
+- Google/Gemini API key added
+
+**Steps:**
+1. Go to project → Generate tab
+2. Click **Video** button
+3. Provider: Google
+4. Model: select a Veo model (e.g., `veo-3.1-generate-preview` or `veo-2.0-generate-001`)
+5. Prompt: "A cat walking through a garden in slow motion"
+6. Click **Generate**
+
+**Expected Result:**
+- ✅ Generation starts (may take 1-3 minutes for Veo)
+- ✅ Status shows "Processing" with spinner
+- ✅ Video renders in `<video>` player when complete
+- ✅ Polling picks up the completed result automatically
 
 ---
 
@@ -691,37 +703,50 @@ Test on:
 **Objective:** Verify correct models per provider
 
 **Steps:**
-1. Select OpenAI → should show: gpt-4o, gpt-4-turbo, gpt-3.5-turbo, dall-e-3
-2. Select Anthropic → should show: claude-3-5-sonnet, claude-3-opus, claude-3-haiku
-3. Select Gemini → should show: gemini-2-0-flash, gemini-1-5-pro, gemini-1-5-flash
-4. Select FAL → should show: flux-pro, flux-realism, runway-gen3, etc.
+1. Select **Google** → should show Gemini text models (2.5 Pro, 2.5 Flash, 3.0 previews), Imagen models (imagen-4.0-generate-001, ultra, fast), Veo models (veo-3.1, veo-2.0) — fetched dynamically from API
+2. Select **OpenRouter** → should show 400+ models fetched from OpenRouter API
+3. Select **OpenAI** → should show: gpt-4o, gpt-4-turbo, dall-e-3, etc.
+4. Select **Anthropic** → should show: claude-3-5-sonnet, etc.
+5. Select **FAL** → should show: flux-pro, stable-diffusion, etc.
 
 **Expected Result:**
 - ✅ Models match provider capabilities
 - ✅ Model list updates when provider changes
+- ✅ Models fetched dynamically from provider APIs (with fallback lists)
 - ✅ Default model selected automatically
 
 ---
 
-### Test 33: Generation History
+### Test 33: Generation History & Results
 
-**Objective:** Review past generations
+**Objective:** Review past generations and their output
 
 **Steps:**
 1. Go to project → Generate tab
-2. Should show list of past generations:
-   - Prompt/description
-   - Provider used
-   - Cost
-   - Date/time
-   - Status (completed/failed)
-3. Click on past generation to view details
+2. Below the form, "Recent Generations" section shows all past generations
+3. Each generation shows:
+   - Truncated prompt
+   - Model name and time ago
+   - Duration (e.g., "6.5s")
+   - Expandable/collapsible with chevron
+4. Click to expand a generation:
+   - **Text**: Shows content with copy-to-clipboard button
+   - **Image**: Shows inline image with fullscreen + download on hover
+   - **Video**: Shows `<video>` player
+   - **Failed**: Shows error message with red styling
+   - **Processing**: Shows spinner
+5. Metadata row shows: duration, token count, cost, provider
+
+**Also verify on project home page:**
+1. Go to project → Assets tab
+2. Should show actual generation results (not placeholder)
+3. Empty state shows "Generate Content" CTA button
 
 **Expected Result:**
-- ✅ All past generations listed
-- ✅ Ordered by date (newest first)
-- ✅ Can view generation details
-- ✅ Can regenerate with same settings
+- ✅ All past generations listed with correct status
+- ✅ Results render by type (text/image/video/audio)
+- ✅ Can copy text, fullscreen images, download images
+- ✅ Project home page shows assets from generations
 
 ---
 
@@ -829,8 +854,9 @@ Use this checklist to track progress:
 - [ ] Test 14: Multiple Projects
 - [ ] Test 15: Text Generation (OpenAI)
 - [ ] Test 16: Text Generation (Anthropic)
-- [ ] Test 17: Image Generation (DALL-E)
-- [ ] Test 18: Image Generation (FAL)
+- [ ] Test 17: Image Generation (Gemini/Imagen)
+- [ ] Test 18: Image Generation (Other Providers)
+- [ ] Test 18b: Video Generation (Veo)
 - [ ] Test 19: Advanced Parameters
 - [ ] Test 20: Provider Fallback
 - [ ] Test 21: Cost Estimation
@@ -845,7 +871,7 @@ Use this checklist to track progress:
 - [ ] Test 30: Provider Health Monitoring
 - [ ] Test 31: Multi-Provider Setup
 - [ ] Test 32: Model Selection
-- [ ] Test 33: Generation History
+- [ ] Test 33: Generation History & Results
 - [ ] Test 34: Performance Under Load
 - [ ] Test 35: Data Persistence
 - [ ] Test 36: Mobile UI
@@ -872,11 +898,13 @@ When reporting bugs, include:
 
 - Check [README.md](./README.md) for setup help
 - See [FUTURE_IMPLEMENTATIONS.md](./FUTURE_IMPLEMENTATIONS.md) for roadmap
+- See [docs/architecture.md](./docs/architecture.md) for technical patterns
+- See [docs/SESSION_2026-02-17.md](./docs/SESSION_2026-02-17.md) for latest session context
 - Review error messages (usually indicate exact issue)
 - Check browser console for JavaScript errors
 
 ---
 
-**Last Updated**: 2026-02-15
-**Guide Version**: 1.0
-**Current Phase**: Phase 5 Complete
+**Last Updated**: 2026-02-17
+**Guide Version**: 1.1
+**Current Phase**: Phase 5 Complete — 7 providers, text/image/video generation operational

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getCurrentUser } from '@/lib/db/client'
+import { getCurrentUser, createClient } from '@/lib/db/supabase-server'
 import * as generationQueries from '@/lib/db/queries/generations'
 import type { APIResponse } from '@/types'
 
@@ -36,7 +36,8 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    const stats = await generationQueries.getGenerationStats(projectId)
+    const supabase = await createClient()
+    const stats = await generationQueries.getGenerationStats(supabase, projectId)
 
     return NextResponse.json<APIResponse<any>>({
       success: true,

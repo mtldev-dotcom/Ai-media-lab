@@ -1,7 +1,6 @@
 'use client'
 
 import { useAPIKeys } from '@/hooks/use-api-keys'
-import { ProviderRouter } from '@/lib/ai/provider-router'
 import { useEffect, useState } from 'react'
 import { Activity, AlertCircle, CheckCircle2 } from 'lucide-react'
 
@@ -15,7 +14,6 @@ interface ProviderWithHealth {
   name: string
   healthy: boolean
   status: 'healthy' | 'degraded' | 'down' | 'unknown'
-  responseTime?: number
 }
 
 export function ProviderSelector({
@@ -24,45 +22,21 @@ export function ProviderSelector({
   generationType,
 }: ProviderSelectorProps) {
   const { data: apiKeys = [] } = useAPIKeys()
-  const [providersWithHealth, setProvidersWithHealth] = useState<ProviderWithHealth[]>([])
   const [loading, setLoading] = useState(true)
 
   // Get unique providers from API keys
   const providers = Array.from(new Set(apiKeys.map((key) => key.provider)))
 
-  // Fetch health status for each provider
+  // Build provider list - assume healthy since health tracking is server-side
+  const providersWithHealth: ProviderWithHealth[] = providers.map((name) => ({
+    name,
+    healthy: true,
+    status: 'healthy' as const,
+  }))
+
   useEffect(() => {
-    const fetchHealth = async () => {
-      setLoading(true)
-      const healthData: ProviderWithHealth[] = []
-
-      for (const provider of providers) {
-        try {
-          const health = await ProviderRouter.getProviderHealth(provider)
-          healthData.push({
-            name: provider,
-            healthy: health.healthy,
-            status: health.status as any,
-          })
-        } catch (error) {
-          healthData.push({
-            name: provider,
-            healthy: false,
-            status: 'unknown',
-          })
-        }
-      }
-
-      setProvidersWithHealth(healthData)
-      setLoading(false)
-    }
-
-    if (providers.length > 0) {
-      fetchHealth()
-    } else {
-      setLoading(false)
-    }
-  }, [providers])
+    setLoading(false)
+  }, [providers.length])
 
   if (loading) {
     return (

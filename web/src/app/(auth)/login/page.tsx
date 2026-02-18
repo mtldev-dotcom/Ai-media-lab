@@ -3,11 +3,12 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { supabase } from '@/lib/db/client'
+import { createClient } from '@/lib/db/supabase-browser'
 import { Zap } from 'lucide-react'
 
 export default function LoginPage() {
   const router = useRouter()
+  const supabase = createClient()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -19,36 +20,30 @@ export default function LoginPage() {
     setLoading(true)
 
     try {
-      console.log('Attempting login with:', email)
-
       const { data, error: signInError } = await supabase.auth.signInWithPassword({
         email,
         password,
       })
 
-      console.log('Login response:', { data, error: signInError })
-
       if (signInError) {
-        console.error('Sign in error:', signInError)
         setError(signInError.message)
+        setLoading(false)
         return
       }
 
       if (!data.session) {
-        console.error('No session returned')
         setError('Login successful but no session created. Please try again.')
+        setLoading(false)
         return
       }
 
-      console.log('Login successful, redirecting...')
+      // Force a small delay to ensure cookies are set
+      await new Promise(resolve => setTimeout(resolve, 100))
 
-      // Wait a moment for session to be set
-      await new Promise(resolve => setTimeout(resolve, 500))
-      router.push('/projects')
+      // Redirect to projects page
+      window.location.replace('/projects')
     } catch (err) {
-      console.error('Login error:', err)
       setError('An error occurred. Please try again.')
-    } finally {
       setLoading(false)
     }
   }

@@ -5,8 +5,7 @@
 
 import { BaseProvider, GenerationRequest, GenerationResponse, GenerationType } from './base-provider'
 import { ProviderFactory } from './provider-factory'
-import { supabase } from '@/lib/db/client'
-import * as apiKeyManager from '@/lib/crypto/api-key-manager'
+import { resolveProviderName } from './provider-aliases'
 
 export interface ProviderRoute {
   provider: string
@@ -23,6 +22,15 @@ export interface RoutingContext {
 }
 
 /**
+ * Lazily get the server-side Supabase client.
+ * Uses dynamic import to avoid bundling next/headers in client components.
+ */
+async function getServerClient() {
+  const { createClient } = await import('@/lib/db/supabase-server')
+  return createClient()
+}
+
+/**
  * Provider Router with fallback and health checking
  */
 export class ProviderRouter {
@@ -31,6 +39,7 @@ export class ProviderRouter {
    */
   static async getUserProviders(userId: string): Promise<ProviderRoute[]> {
     try {
+      const supabase = await getServerClient()
       const { data, error } = await supabase
         .from('provider_configs')
         .select('provider, priority, is_enabled, fallback_provider')
@@ -58,6 +67,7 @@ export class ProviderRouter {
     userId?: string
   ): Promise<{ healthy: boolean; status: string; error?: string }> {
     try {
+      const supabase = await getServerClient()
       const query = supabase
         .from('provider_health')
         .select('status, error_message, last_failure_at')
@@ -98,6 +108,7 @@ export class ProviderRouter {
   ): Promise<void> {
     try {
       const status = success ? 'healthy' : 'degraded'
+      const supabase = await getServerClient()
 
       const { error: updateError } = await supabase
         .from('provider_health')
@@ -157,8 +168,8 @@ export class ProviderRouter {
           continue
         }
 
-        // Create provider instance
-        const provider = ProviderFactory.createProvider(providerRoute.provider, decryptedKey)
+        // Create provider instance (resolve alias e.g. "google" -> "gemini")
+        const provider = ProviderFactory.createProvider(resolveProviderName(providerRoute.provider), decryptedKey)
 
         // Check if provider supports this generation type
         if (!provider.supports(request.type)) {
@@ -185,28 +196,9 @@ export class ProviderRouter {
    * Get decrypted API key for a provider
    */
   private static async getProviderAPIKey(userId: string, provider: string): Promise<string> {
-    try {
-      // Get the active API key for this provider
-      const { data, error } = await supabase
-        .from('user_api_keys')
-        .select('id')
-        .eq('user_id', userId)
-        .eq('provider', provider)
-        .eq('is_active', true)
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .single()
-
-      if (error || !data) {
-        throw new Error(`No active API key found for ${provider}`)
-      }
-
-      // Decrypt the key
-      const decrypted = await apiKeyManager.getDecryptedAPIKey(data.id, userId)
-      return decrypted
-    } catch (error) {
-      throw new Error(`Failed to retrieve API key for ${provider}: ${String(error)}`)
-    }
+    const { getActiveAPIKey } = await import('@/lib/crypto/api-key-manager')
+    const supabase = await getServerClient()
+    return getActiveAPIKey(supabase, userId, provider)
   }
 
   /**

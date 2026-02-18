@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getCurrentUser } from '@/lib/db/client'
+import { getCurrentUser, createClient } from '@/lib/db/supabase-server'
 import { ProviderFactory } from '@/lib/ai/provider-factory'
+import { resolveProviderName } from '@/lib/ai/provider-aliases'
 import * as apiKeyManager from '@/lib/crypto/api-key-manager'
 import type { APIResponse } from '@/types'
 
@@ -12,7 +13,8 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ provider: string }> }
 ) {
-  const { provider } = await params
+  const { provider: rawProvider } = await params
+  const provider = resolveProviderName(rawProvider)
 
   try {
     const user = await getCurrentUser()
@@ -28,22 +30,22 @@ export async function GET(
       )
     }
 
-    // Get user's API key for this provider
+    // Get user's API key for this provider (use raw name since that's how keys are stored)
     let apiKey: string
     try {
-      apiKey = await getProviderAPIKey(user.id, provider)
+      apiKey = await getProviderAPIKey(user.id, rawProvider)
     } catch (error) {
       return NextResponse.json<APIResponse<null>>(
         {
           success: false,
           error: 'NO_API_KEY',
-          message: `No API key found for provider: ${provider}`,
+          message: `No API key found for provider: ${rawProvider}`,
         },
         { status: 400 }
       )
     }
 
-    // Create provider instance
+    // Create provider instance (use resolved name for factory lookup)
     const providerInstance = ProviderFactory.createProvider(provider, apiKey)
 
     // Get available models
@@ -70,26 +72,6 @@ export async function GET(
  * Get decrypted API key for a provider
  */
 async function getProviderAPIKey(userId: string, provider: string): Promise<string> {
-  try {
-    const { supabase } = await import('@/lib/db/client')
-
-    const { data, error } = await supabase
-      .from('user_api_keys')
-      .select('id')
-      .eq('user_id', userId)
-      .eq('provider', provider)
-      .eq('is_active', true)
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .single()
-
-    if (error || !data) {
-      throw new Error(`No active API key found for ${provider}`)
-    }
-
-    const decrypted = await apiKeyManager.getDecryptedAPIKey(data.id, userId)
-    return decrypted
-  } catch (error) {
-    throw new Error(`Failed to retrieve API key for ${provider}`)
-  }
+  const supabase = await createClient()
+  return apiKeyManager.getActiveAPIKey(supabase, userId, provider)
 }

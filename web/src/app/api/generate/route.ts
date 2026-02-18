@@ -1,14 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getCurrentUser } from '@/lib/db/client'
+import { getCurrentUser, createClient } from '@/lib/db/supabase-server'
 import * as generationQueries from '@/lib/db/queries/generations'
 import { ProviderRouter } from '@/lib/ai/provider-router'
+import { resolveProviderName } from '@/lib/ai/provider-aliases'
+import { ProviderFactory } from '@/lib/ai/provider-factory'
+import * as apiKeyManager from '@/lib/crypto/api-key-manager'
 import { z } from 'zod'
 import type { APIResponse } from '@/types'
 
 const GenerateSchema = z.object({
   projectId: z.string().uuid(),
   generationType: z.enum(['text', 'image', 'video', 'audio']),
-  provider: z.string().optional(),
+  provider: z.string(),
   model: z.string(),
   prompt: z.string().min(1),
   parameters: z.record(z.string(), z.any()).optional(),
@@ -33,15 +36,17 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    const supabase = await createClient()
     const body = await request.json()
     const validatedData = GenerateSchema.parse(body)
 
     // Create generation record
     const generation = await generationQueries.createGeneration(
+      supabase,
       user.id,
       validatedData.projectId,
       {
-        provider: validatedData.provider || 'auto',
+        provider: validatedData.provider,
         model: validatedData.model,
         generation_type: validatedData.generationType,
         prompt: validatedData.prompt,
@@ -53,7 +58,6 @@ export async function POST(request: NextRequest) {
     executeGenerationAsync(
       user.id,
       generation.id,
-      validatedData.projectId,
       validatedData
     ).catch((error) => {
       console.error('Async generation failed:', error)
@@ -66,7 +70,7 @@ export async function POST(request: NextRequest) {
         data: generation,
         message: 'Generation started',
       },
-      { status: 202 } // 202 Accepted
+      { status: 202 }
     )
   } catch (error) {
     if (error instanceof z.ZodError) {
@@ -98,10 +102,9 @@ export async function POST(request: NextRequest) {
 async function executeGenerationAsync(
   userId: string,
   generationId: string,
-  projectId: string,
   request: {
     generationType: 'text' | 'image' | 'video' | 'audio'
-    provider?: string
+    provider: string
     model: string
     prompt: string
     parameters?: Record<string, any>
@@ -110,28 +113,18 @@ async function executeGenerationAsync(
   const startTime = Date.now()
 
   try {
-    // Route to best provider
-    const route = await ProviderRouter.routeGeneration(
-      {
-        userId,
-        projectId,
-        generationType: request.generationType,
-        preferredProvider: request.provider,
-      },
-      {
-        type: request.generationType,
-        model: request.model,
-        prompt: request.prompt,
-        parameters: request.parameters,
-      }
-    )
+    // Get a fresh server client for the async operation
+    const supabase = await createClient()
 
-    if (!route) {
-      throw new Error('No suitable provider found')
-    }
+    // Get API key for the selected provider (use raw provider name for DB lookup)
+    const apiKey = await apiKeyManager.getActiveAPIKey(supabase, userId, request.provider)
+
+    // Resolve provider name for factory (e.g. "google" -> "gemini")
+    const factoryName = resolveProviderName(request.provider)
+    const provider = ProviderFactory.createProvider(factoryName, apiKey)
 
     // Execute generation
-    const result = await route.provider.generate({
+    const result = await provider.generate({
       type: request.generationType,
       model: request.model,
       prompt: request.prompt,
@@ -141,26 +134,16 @@ async function executeGenerationAsync(
     const duration = Date.now() - startTime
 
     if (!result.success) {
-      // Update with error
-      await generationQueries.updateGenerationResult(generationId, {
+      await generationQueries.updateGenerationResult(supabase, generationId, {
         status: 'failed',
         error_message: result.error || 'Generation failed',
         duration_ms: duration,
       })
-
-      // Update provider health
-      await ProviderRouter.updateProviderHealth(
-        route.providerName,
-        userId,
-        false,
-        result.error
-      )
-
       return
     }
 
     // Success - update generation record
-    await generationQueries.updateGenerationResult(generationId, {
+    await generationQueries.updateGenerationResult(supabase, generationId, {
       status: 'completed',
       result: {
         content: result.result?.content,
@@ -171,24 +154,20 @@ async function executeGenerationAsync(
       tokens_total: (result.tokens?.input || 0) + (result.tokens?.output || 0),
       duration_ms: duration,
     })
-
-    // Update provider health
-    await ProviderRouter.updateProviderHealth(
-      route.providerName,
-      userId,
-      true,
-      undefined,
-      duration
-    )
   } catch (error) {
     const duration = Date.now() - startTime
     const errorMessage = error instanceof Error ? error.message : 'Unknown error'
 
-    await generationQueries.updateGenerationResult(generationId, {
-      status: 'failed',
-      error_message: errorMessage,
-      duration_ms: duration,
-    })
+    try {
+      const supabase = await createClient()
+      await generationQueries.updateGenerationResult(supabase, generationId, {
+        status: 'failed',
+        error_message: errorMessage,
+        duration_ms: duration,
+      })
+    } catch (updateError) {
+      console.error('Failed to update generation status:', updateError)
+    }
 
     console.error('Generation execution failed:', error)
   }

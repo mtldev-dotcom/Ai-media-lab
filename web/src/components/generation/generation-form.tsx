@@ -1,10 +1,20 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useCreateGeneration, useEstimateCost, useProviderModels } from '@/hooks/use-generations'
-import { ProviderSelector } from './provider-selector'
+import { useAPIKeys } from '@/hooks/use-api-keys'
 import { ParameterControls } from './parameter-controls'
-import { AlertCircle, Loader2, Zap } from 'lucide-react'
+import {
+  AlertCircle,
+  Loader2,
+  Zap,
+  ChevronDown,
+  Sparkles,
+  CheckCircle2,
+  Search,
+} from 'lucide-react'
+import { cn } from '@/lib/utils'
+import Link from 'next/link'
 
 interface GenerationFormProps {
   projectId: string
@@ -22,27 +32,45 @@ export function GenerationForm({
   const [selectedModel, setSelectedModel] = useState<string | undefined>()
   const [parameters, setParameters] = useState<Record<string, any>>({})
   const [costEstimate, setCostEstimate] = useState<number | null>(null)
-  const [showCostEstimate, setShowCostEstimate] = useState(false)
+  const [modelSearch, setModelSearch] = useState('')
+  const [modelDropdownOpen, setModelDropdownOpen] = useState(false)
+  const [validationError, setValidationError] = useState<string | null>(null)
+  const [successState, setSuccessState] = useState(false)
 
+  const { data: apiKeys = [], isLoading: keysLoading } = useAPIKeys()
   const createGeneration = useCreateGeneration()
   const estimateCost = useEstimateCost()
-  const { data: availableModels = [] } = useProviderModels(selectedProvider || '')
+  const { data: availableModels = [], isLoading: modelsLoading } = useProviderModels(
+    selectedProvider || ''
+  )
 
-  // Update selected model when provider changes
+  // Get unique providers from saved API keys
+  const providers = Array.from(new Set(apiKeys.map((key) => key.provider)))
+
+  // Auto-select first provider when keys load
   useEffect(() => {
-    if (availableModels.length > 0 && !selectedModel) {
-      setSelectedModel(availableModels[0])
+    if (providers.length > 0 && !selectedProvider) {
+      setSelectedProvider(providers[0])
     }
-  }, [availableModels, selectedModel])
+  }, [providers.length, selectedProvider])
 
-  // Estimate cost when prompt or parameters change
+  // Auto-select first model when models load or provider changes
+  useEffect(() => {
+    if (availableModels.length > 0) {
+      setSelectedModel(availableModels[0])
+    } else {
+      setSelectedModel(undefined)
+    }
+  }, [availableModels])
+
+  // Estimate cost with debounce
   useEffect(() => {
     if (!prompt || !selectedProvider || !selectedModel) {
       setCostEstimate(null)
       return
     }
 
-    const estimateAsync = async () => {
+    const timer = setTimeout(async () => {
       try {
         const response = await estimateCost.mutateAsync({
           provider: selectedProvider,
@@ -52,21 +80,33 @@ export function GenerationForm({
           parameters,
         })
         setCostEstimate(response.data?.amount_cents || 0)
-      } catch (error) {
-        console.error('Error estimating cost:', error)
+      } catch {
         setCostEstimate(null)
       }
-    }
+    }, 800)
 
-    const timer = setTimeout(estimateAsync, 500) // Debounce
     return () => clearTimeout(timer)
-  }, [prompt, selectedProvider, selectedModel, parameters, generationType, estimateCost])
+  }, [prompt, selectedProvider, selectedModel, generationType])
+
+  // Filter models by search
+  const filteredModels = availableModels.filter((m) =>
+    m.toLowerCase().includes(modelSearch.toLowerCase())
+  )
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    setValidationError(null)
 
-    if (!prompt.trim() || !selectedProvider || !selectedModel) {
-      alert('Please enter a prompt and select a provider/model')
+    if (!prompt.trim()) {
+      setValidationError('Please enter a prompt')
+      return
+    }
+    if (!selectedProvider) {
+      setValidationError('Please select a provider')
+      return
+    }
+    if (!selectedModel) {
+      setValidationError('Please select a model')
       return
     }
 
@@ -80,65 +120,194 @@ export function GenerationForm({
         parameters,
       })
 
+      setSuccessState(true)
+      setPrompt('')
+      setTimeout(() => setSuccessState(false), 5000)
       onSuccess?.(response.data?.id)
     } catch (error) {
-      // Error is handled by React Query
-      console.error('Generation failed:', error)
+      // Error handled by React Query
     }
   }
 
+  // Close model dropdown on outside click
+  useEffect(() => {
+    const handleClick = () => setModelDropdownOpen(false)
+    if (modelDropdownOpen) {
+      document.addEventListener('click', handleClick)
+      return () => document.removeEventListener('click', handleClick)
+    }
+  }, [modelDropdownOpen])
+
+  const isSubmitDisabled =
+    createGeneration.isPending || !prompt.trim() || !selectedProvider || !selectedModel
+
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
-      {/* Generation Type Header */}
-      <div className="p-4 bg-gradient-to-r from-blue-50 to-purple-50 rounded-lg border border-blue-100">
-        <h2 className="text-lg font-semibold text-gray-900 capitalize">{generationType} Generation</h2>
-        <p className="text-sm text-gray-600 mt-1">
-          Generate high-quality {generationType} content with AI
-        </p>
-      </div>
-
-      {/* Provider Selector */}
-      <ProviderSelector
-        selectedProvider={selectedProvider}
-        onProviderChange={setSelectedProvider}
-        generationType={generationType}
-      />
-
-      {/* Model Selector */}
-      {selectedProvider && availableModels.length > 0 && (
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">Model</label>
-          <select
-            value={selectedModel || ''}
-            onChange={(e) => setSelectedModel(e.target.value)}
-            className="w-full px-4 py-2 border border-gray-300 rounded-lg text-sm"
-          >
-            {availableModels.map((model) => (
-              <option key={model} value={model}>
-                {model}
-              </option>
-            ))}
-          </select>
+    <form onSubmit={handleSubmit} className="space-y-5">
+      {/* No Providers Warning */}
+      {!keysLoading && providers.length === 0 && (
+        <div className="flex items-start gap-3 p-4 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 rounded-xl">
+          <AlertCircle className="w-5 h-5 text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
+          <div className="text-sm">
+            <p className="font-medium text-amber-900 dark:text-amber-300">No API keys configured</p>
+            <p className="text-amber-700 dark:text-amber-400 mt-0.5">
+              Add an API key in{' '}
+              <Link href="/settings" className="underline font-medium">
+                Settings
+              </Link>{' '}
+              to start generating.
+            </p>
+          </div>
         </div>
       )}
 
-      {/* Prompt Input */}
+      {/* Provider Selector */}
+      {providers.length > 0 && (
+        <div>
+          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+            Provider
+          </label>
+          <div className="flex flex-wrap gap-2">
+            {providers.map((provider) => (
+              <button
+                key={provider}
+                type="button"
+                onClick={() => {
+                  setSelectedProvider(provider)
+                  setSelectedModel(undefined)
+                  setModelSearch('')
+                }}
+                className={cn(
+                  'px-4 py-2 rounded-lg text-sm font-medium border transition-all capitalize',
+                  selectedProvider === provider
+                    ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
+                    : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600'
+                )}
+              >
+                {provider}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Model Selector */}
+      {selectedProvider && (
+        <div>
+          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+            Model
+          </label>
+          {modelsLoading ? (
+            <div className="flex items-center gap-2 px-4 py-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg">
+              <Loader2 className="w-4 h-4 animate-spin text-slate-400" />
+              <span className="text-sm text-slate-500">Loading models...</span>
+            </div>
+          ) : availableModels.length > 10 ? (
+            /* Searchable dropdown for providers with many models (OpenRouter) */
+            <div className="relative" onClick={(e) => e.stopPropagation()}>
+              <button
+                type="button"
+                onClick={() => setModelDropdownOpen(!modelDropdownOpen)}
+                className="w-full flex items-center justify-between px-4 py-2.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm text-left hover:border-slate-300 dark:hover:border-slate-600 transition-colors"
+              >
+                <span className={selectedModel ? 'text-slate-900 dark:text-white' : 'text-slate-400'}>
+                  {selectedModel || 'Select a model...'}
+                </span>
+                <ChevronDown
+                  className={cn(
+                    'w-4 h-4 text-slate-400 transition-transform',
+                    modelDropdownOpen && 'rotate-180'
+                  )}
+                />
+              </button>
+
+              {modelDropdownOpen && (
+                <div className="absolute z-20 mt-1 w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-lg overflow-hidden">
+                  {/* Search */}
+                  <div className="p-2 border-b border-slate-200 dark:border-slate-700">
+                    <div className="relative">
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                      <input
+                        type="text"
+                        value={modelSearch}
+                        onChange={(e) => setModelSearch(e.target.value)}
+                        placeholder="Search models..."
+                        className="w-full pl-9 pr-3 py-2 text-sm bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-md text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        autoFocus
+                      />
+                    </div>
+                  </div>
+                  {/* Model list */}
+                  <div className="max-h-60 overflow-y-auto">
+                    {filteredModels.length === 0 ? (
+                      <div className="px-4 py-3 text-sm text-slate-500">No models found</div>
+                    ) : (
+                      filteredModels.map((model) => (
+                        <button
+                          key={model}
+                          type="button"
+                          onClick={() => {
+                            setSelectedModel(model)
+                            setModelDropdownOpen(false)
+                            setModelSearch('')
+                          }}
+                          className={cn(
+                            'w-full text-left px-4 py-2.5 text-sm transition-colors',
+                            model === selectedModel
+                              ? 'bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-300'
+                              : 'text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700/50'
+                          )}
+                        >
+                          {model}
+                        </button>
+                      ))
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : availableModels.length > 0 ? (
+            /* Simple select for few models */
+            <select
+              value={selectedModel || ''}
+              onChange={(e) => setSelectedModel(e.target.value)}
+              className="w-full px-4 py-2.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              {availableModels.map((model) => (
+                <option key={model} value={model}>
+                  {model}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <div className="px-4 py-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm text-slate-500">
+              No models available for this provider
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Prompt */}
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-2">
-          {generationType === 'image' ? 'Image Prompt' : 'Prompt'}
+        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+          {generationType === 'image' ? 'Image Prompt' : generationType === 'audio' ? 'Audio Prompt' : 'Prompt'}
         </label>
         <textarea
           value={prompt}
-          onChange={(e) => setPrompt(e.target.value)}
+          onChange={(e) => {
+            setPrompt(e.target.value)
+            setValidationError(null)
+          }}
           placeholder={
             generationType === 'image'
-              ? 'Describe the image you want to generate...'
-              : 'Enter your prompt here...'
+              ? 'A serene mountain landscape at golden hour, photorealistic...'
+              : generationType === 'audio'
+                ? 'Describe the audio you want to generate...'
+                : 'Write a detailed prompt for the AI...'
           }
-          className="w-full px-4 py-3 border border-gray-300 rounded-lg text-sm min-h-[120px] focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+          className="w-full px-4 py-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-900 dark:text-white placeholder-slate-400 min-h-[140px] focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none transition-colors"
         />
-        <p className="text-xs text-gray-500 mt-1">
-          {prompt.length} characters • Be descriptive and specific for better results
+        <p className="text-xs text-slate-400 mt-1.5">
+          {prompt.length} characters · Be descriptive and specific for better results
         </p>
       </div>
 
@@ -151,31 +320,29 @@ export function GenerationForm({
 
       {/* Cost Estimate */}
       {costEstimate !== null && (
-        <div
-          className="p-3 bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200 rounded-lg cursor-pointer hover:from-green-100 hover:to-emerald-100 transition-colors"
-          onClick={() => setShowCostEstimate(!showCostEstimate)}
-        >
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Zap className="w-4 h-4 text-green-600" />
-              <div>
-                <p className="text-sm font-medium text-gray-900">
-                  Estimated Cost: ${(costEstimate / 100).toFixed(2)}
-                </p>
-                <p className="text-xs text-gray-600">Click to view details</p>
-              </div>
-            </div>
-          </div>
+        <div className="flex items-center gap-2 px-4 py-3 bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-900/50 rounded-lg">
+          <Zap className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+          <span className="text-sm font-medium text-emerald-800 dark:text-emerald-300">
+            Estimated cost: ${(costEstimate / 100).toFixed(4)}
+          </span>
         </div>
       )}
 
-      {/* Error Messages */}
+      {/* Validation Error */}
+      {validationError && (
+        <div className="flex items-center gap-2 px-4 py-3 bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-900/50 rounded-lg">
+          <AlertCircle className="w-4 h-4 text-red-600 dark:text-red-400 shrink-0" />
+          <span className="text-sm text-red-700 dark:text-red-400">{validationError}</span>
+        </div>
+      )}
+
+      {/* Generation Error */}
       {createGeneration.isError && (
-        <div className="p-3 bg-red-50 border border-red-200 rounded-lg flex items-start gap-2">
-          <AlertCircle className="w-5 h-5 text-red-600 mt-0.5 flex-shrink-0" />
-          <div className="text-sm text-red-800">
-            <p className="font-medium">Generation failed</p>
-            <p className="text-xs mt-1">
+        <div className="flex items-start gap-3 px-4 py-3 bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-900/50 rounded-lg">
+          <AlertCircle className="w-4 h-4 text-red-600 dark:text-red-400 shrink-0 mt-0.5" />
+          <div className="text-sm">
+            <p className="font-medium text-red-800 dark:text-red-300">Generation failed</p>
+            <p className="text-red-600 dark:text-red-400 mt-0.5">
               {createGeneration.error instanceof Error
                 ? createGeneration.error.message
                 : 'An unknown error occurred'}
@@ -184,21 +351,38 @@ export function GenerationForm({
         </div>
       )}
 
-      {/* Submit Button */}
+      {/* Success State */}
+      {successState && (
+        <div className="flex items-center gap-2 px-4 py-3 bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-900/50 rounded-lg">
+          <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+          <span className="text-sm font-medium text-emerald-800 dark:text-emerald-300">
+            Generation started! Processing in background...
+          </span>
+        </div>
+      )}
+
+      {/* Submit */}
       <button
         type="submit"
-        disabled={
-          createGeneration.isPending ||
-          !prompt.trim() ||
-          !selectedProvider ||
-          !selectedModel
-        }
-        className="w-full py-3 px-4 bg-gradient-to-r from-blue-600 to-purple-600 text-white font-semibold rounded-lg hover:from-blue-700 hover:to-purple-700 disabled:from-gray-400 disabled:to-gray-400 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2"
+        disabled={isSubmitDisabled}
+        className={cn(
+          'w-full py-3 px-4 rounded-xl font-semibold text-sm transition-all flex items-center justify-center gap-2',
+          isSubmitDisabled
+            ? 'bg-slate-200 dark:bg-slate-800 text-slate-400 dark:text-slate-600 cursor-not-allowed'
+            : 'bg-blue-600 hover:bg-blue-500 text-white shadow-sm hover:shadow'
+        )}
       >
-        {createGeneration.isPending && <Loader2 className="w-4 h-4 animate-spin" />}
-        {createGeneration.isPending
-          ? 'Generating...'
-          : `Generate ${generationType.charAt(0).toUpperCase() + generationType.slice(1)}`}
+        {createGeneration.isPending ? (
+          <>
+            <Loader2 className="w-4 h-4 animate-spin" />
+            Generating...
+          </>
+        ) : (
+          <>
+            <Sparkles className="w-4 h-4" />
+            Generate {generationType.charAt(0).toUpperCase() + generationType.slice(1)}
+          </>
+        )}
       </button>
     </form>
   )

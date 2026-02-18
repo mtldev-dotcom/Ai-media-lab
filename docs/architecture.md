@@ -1,8 +1,7 @@
 # Technical Architecture - AI Media Creation Workspace
 
-**Document Version**: 1.0
-**Last Updated**: 2026-02-15
-**Status**: Draft - To be expanded during implementation
+**Last Updated**: 2026-02-17
+**Status**: Phase 5 Complete — Generation pipeline fully operational
 
 ---
 
@@ -13,9 +12,10 @@
 3. [API Architecture](#api-architecture)
 4. [Frontend Architecture](#frontend-architecture)
 5. [Security Architecture](#security-architecture)
-6. [Cost Calculation System](#cost-calculation-system)
-7. [Provider System](#provider-system)
-8. [Deployment Architecture](#deployment-architecture)
+6. [Provider System](#provider-system)
+7. [Generation Flow](#generation-flow)
+8. [Key Patterns](#key-patterns)
+9. [Deployment Architecture](#deployment-architecture)
 
 ---
 
@@ -25,47 +25,45 @@
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│                   Frontend (Next.js 15)                 │
-│  ┌──────────────────────────────────────────────────┐  │
-│  │  Pages: Projects, Generate, Analytics, Settings  │  │
-│  │  Components: Cards, Forms, Charts, Modals        │  │
-│  │  State: Zustand (UI), React Query (Server)       │  │
-│  └──────────────────────────────────────────────────┘  │
+│                   Frontend (Next.js 16)                  │
+│  ┌──────────────────────────────────────────────────┐   │
+│  │  Pages: Projects, Generate, Analytics, Settings  │   │
+│  │  Components: Cards, Forms, Results, Modals       │   │
+│  │  State: Zustand (UI), React Query (Server)       │   │
+│  └──────────────────────────────────────────────────┘   │
 └─────────────────────────────────────────────────────────┘
                           ↓
 ┌─────────────────────────────────────────────────────────┐
-│              API Layer (Next.js API Routes)             │
-│  ┌──────────────────────────────────────────────────┐  │
-│  │  /api/auth      - Authentication                │  │
-│  │  /api/projects  - Project CRUD                  │  │
-│  │  /api/generate  - Generation requests           │  │
-│  │  /api/assets    - Asset management              │  │
-│  │  /api/analytics - Analytics queries             │  │
-│  │  /api/settings  - Settings/config               │  │
-│  └──────────────────────────────────────────────────┘  │
+│              API Layer (Next.js API Routes)              │
+│  ┌──────────────────────────────────────────────────┐   │
+│  │  /api/generate     - Create & execute generation │   │
+│  │  /api/generations  - List generations            │   │
+│  │  /api/api-keys     - API key CRUD                │   │
+│  │  /api/projects     - Project CRUD                │   │
+│  │  /api/providers    - Model discovery             │   │
+│  │  /api/estimate-cost - Cost estimation            │   │
+│  └──────────────────────────────────────────────────┘   │
 └─────────────────────────────────────────────────────────┘
                           ↓
 ┌─────────────────────────────────────────────────────────┐
-│            Backend Services (Node.js)                    │
-│  ┌──────────────────────────────────────────────────┐  │
-│  │  Provider Router      - Route requests to best   │  │
-│  │  Provider System      - Abstraction layer        │  │
-│  │  Cost Calculator      - Price estimation        │  │
-│  │  Asset Manager        - File handling           │  │
-│  │  Analytics Engine     - Usage tracking          │  │
-│  │  Encryption Service   - API key security        │  │
-│  └──────────────────────────────────────────────────┘  │
+│            Backend Services                              │
+│  ┌──────────────────────────────────────────────────┐   │
+│  │  ProviderFactory    - Registry of 7 providers    │   │
+│  │  Provider Aliases   - "google" → "gemini"        │   │
+│  │  API Key Manager    - AES-256-GCM encrypt/decrypt│   │
+│  │  Cost Calculator    - Per-provider pricing       │   │
+│  └──────────────────────────────────────────────────┘   │
 └─────────────────────────────────────────────────────────┘
                           ↓
         ┌────────────────┬────────────────┐
         ↓                ↓                ↓
    ┌─────────┐    ┌─────────────┐   ┌──────────┐
    │ Supabase│    │  AI APIs    │   │ Storage  │
-   │   DB    │    │  (OpenAI,   │   │  (S3)    │
-   │(PostSQL)│    │Anthropic,   │   │          │
-   │   RLS   │    │  etc.)      │   │ Buckets  │
-   │  Auth   │    └─────────────┘   └──────────┘
-   └─────────┘
+   │  Cloud  │    │ Gemini,     │   │ (Future) │
+   │(PostSQL)│    │ OpenRouter, │   │          │
+   │  RLS    │    │ OpenAI,     │   │          │
+   │  Auth   │    │ Anthropic...│   │          │
+   └─────────┘    └─────────────┘   └──────────┘
 ```
 
 ---
@@ -103,50 +101,24 @@ CREATE TABLE projects (
 );
 ```
 
-#### Assets Table
-```sql
-CREATE TABLE assets (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  project_id UUID REFERENCES projects(id) ON DELETE CASCADE,
-  user_id UUID REFERENCES users(id) ON DELETE CASCADE,
-  type VARCHAR(50) NOT NULL, -- 'image', 'video', 'audio', 'text'
-  name VARCHAR(255),
-  description TEXT,
-  file_url TEXT,
-  file_size_bytes BIGINT,
-  file_format VARCHAR(50),
-  width INTEGER,
-  height INTEGER,
-  duration_seconds DECIMAL,
-  generation_id UUID, -- Reference to generation that created this
-  thumbnail_url TEXT,
-  metadata JSONB DEFAULT '{}',
-  tags TEXT[],
-  favorite BOOLEAN DEFAULT FALSE,
-  archived_at TIMESTAMP,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-```
-
-#### Generations Table (Core Analytics)
+#### Generations Table
 ```sql
 CREATE TABLE generations (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   project_id UUID REFERENCES projects(id) ON DELETE CASCADE,
   user_id UUID REFERENCES users(id) ON DELETE CASCADE,
-  provider VARCHAR(50) NOT NULL, -- 'openai', 'anthropic', etc.
+  provider VARCHAR(50) NOT NULL,
   model VARCHAR(100) NOT NULL,
   generation_type VARCHAR(50) NOT NULL, -- 'text', 'image', 'video', 'audio'
   prompt TEXT NOT NULL,
   parameters JSONB DEFAULT '{}',
-  status VARCHAR(20) NOT NULL DEFAULT 'pending', -- pending, processing, completed, failed
-  result JSONB, -- Full API response
+  status VARCHAR(20) NOT NULL DEFAULT 'pending',
+  result JSONB,             -- { content: "base64 or text", mimeType: "..." }
   error_message TEXT,
   tokens_input INTEGER,
   tokens_output INTEGER,
   tokens_total INTEGER,
-  cost_cents INTEGER, -- Calculated cost in cents
+  cost_cents INTEGER,
   started_at TIMESTAMP,
   completed_at TIMESTAMP,
   duration_ms INTEGER,
@@ -173,157 +145,59 @@ CREATE TABLE user_api_keys (
 );
 ```
 
-#### Provider Health Table
-```sql
-CREATE TABLE provider_health (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  provider VARCHAR(50) NOT NULL,
-  user_id UUID REFERENCES users(id),
-  status VARCHAR(20) NOT NULL DEFAULT 'unknown', -- healthy, degraded, down
-  last_success_at TIMESTAMP,
-  last_failure_at TIMESTAMP,
-  failure_count INTEGER DEFAULT 0,
-  avg_response_time_ms DECIMAL,
-  error_message TEXT,
-  checked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  UNIQUE(provider, user_id)
-);
-```
-
-#### Usage Analytics Table (Aggregated)
-```sql
-CREATE TABLE usage_analytics (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id UUID REFERENCES users(id) ON DELETE CASCADE,
-  project_id UUID REFERENCES projects(id),
-  period_type VARCHAR(20) NOT NULL, -- 'daily', 'monthly'
-  period_start DATE NOT NULL,
-  provider VARCHAR(50),
-  model VARCHAR(100),
-  generation_type VARCHAR(50),
-  request_count INTEGER DEFAULT 0,
-  success_count INTEGER DEFAULT 0,
-  failure_count INTEGER DEFAULT 0,
-  total_tokens INTEGER DEFAULT 0,
-  total_cost_cents INTEGER DEFAULT 0,
-  avg_duration_ms DECIMAL,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  UNIQUE(user_id, project_id, period_type, period_start, provider, model)
-);
-```
-
-#### Budget Alerts Table
-```sql
-CREATE TABLE budget_alerts (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id UUID REFERENCES users(id) ON DELETE CASCADE,
-  project_id UUID REFERENCES projects(id),
-  alert_type VARCHAR(50) NOT NULL, -- 'threshold_reached', 'budget_exceeded'
-  threshold_cents INTEGER,
-  current_spend_cents INTEGER,
-  triggered_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  acknowledged_at TIMESTAMP,
-  metadata JSONB DEFAULT '{}',
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-```
-
-### Key Indexes
-
-```sql
-CREATE INDEX idx_projects_user_id ON projects(user_id);
-CREATE INDEX idx_assets_project_id ON assets(project_id);
-CREATE INDEX idx_assets_user_id ON assets(user_id);
-CREATE INDEX idx_generations_user_id ON generations(user_id);
-CREATE INDEX idx_generations_project_id ON generations(project_id);
-CREATE INDEX idx_generations_created_at ON generations(created_at);
-CREATE INDEX idx_generations_provider ON generations(provider);
-CREATE INDEX idx_api_keys_user_id ON user_api_keys(user_id);
-CREATE INDEX idx_provider_health_provider ON provider_health(provider);
-CREATE INDEX idx_usage_analytics_user_id ON usage_analytics(user_id);
-CREATE INDEX idx_usage_analytics_period ON usage_analytics(period_start);
-```
-
 ### Row-Level Security (RLS)
 
-All user tables have RLS enabled with policies:
+All tables have RLS enabled. Every query must include `user_id = auth.uid()`:
 
 ```sql
--- Projects: Users can only see/modify their own projects
 CREATE POLICY projects_user_isolation ON projects
   FOR ALL USING (auth.uid() = user_id);
 
--- Assets: Users can only see/modify assets in their projects
-CREATE POLICY assets_user_isolation ON assets
-  FOR ALL USING (user_id = auth.uid());
-
--- Generations: Users can only see their own generations
 CREATE POLICY generations_user_isolation ON generations
   FOR ALL USING (user_id = auth.uid());
 
--- API Keys: Users can only see/modify their own keys
 CREATE POLICY api_keys_user_isolation ON user_api_keys
   FOR ALL USING (user_id = auth.uid());
 ```
+
+**Critical**: API routes must use the server-side Supabase client (cookie-based auth) for RLS to work. The browser singleton client has no auth session server-side.
 
 ---
 
 ## API Architecture
 
-### Route Structure
+### Implemented Routes
 
 ```
 /api
-├── /auth
-│   ├── POST /login          → Authenticate user
-│   ├── POST /signup         → Register new user
-│   ├── POST /logout         → End session
-│   └── GET /me              → Current user info
-├── /projects
-│   ├── GET /                → List projects
-│   ├── POST /               → Create project
-│   ├── GET /[id]            → Get project details
-│   ├── PUT /[id]            → Update project
-│   └── DELETE /[id]         → Delete project
-├── /generate
-│   └── POST /               → Request generation
-├── /assets
-│   ├── GET /                → List assets
-│   ├── GET /[id]            → Get asset details
-│   ├── PUT /[id]            → Update asset
-│   └── DELETE /[id]         → Delete asset
-├── /analytics
-│   ├── GET /usage           → Usage stats
-│   ├── GET /cost            → Cost breakdown
-│   └── GET /provider        → Provider comparison
-├── /api-keys
-│   ├── GET /                → List keys
-│   ├── POST /               → Add new key
-│   └── DELETE /[id]         → Delete key
-└── /settings
-    ├── GET /providers       → Provider config
-    └── PUT /providers       → Update config
+├── /generate              POST   → Create & execute generation (returns 202)
+├── /generations           GET    → List generations for project
+├── /generations/stats     GET    → Generation statistics
+├── /api-keys              GET    → List API keys
+│                          POST   → Add new API key
+├── /api-keys/[id]         PUT    → Update API key
+│                          DELETE → Delete API key
+├── /api-keys/test         POST   → Test API key validity
+├── /providers/[provider]/models  GET → List available models
+├── /estimate-cost         POST   → Estimate generation cost
+├── /projects              GET    → List projects
+│                          POST   → Create project
+├── /projects/[id]         GET    → Get project
+│                          PUT    → Update project
+│                          DELETE → Delete project
+└── /auth
+    ├── /callback          GET    → OAuth callback
+    └── /signout           POST   → Sign out
 ```
 
-### Request/Response Patterns
+### Response Format
 
-**Success Response**:
-```json
-{
-  "success": true,
-  "data": { /* payload */ },
-  "message": "Operation successful"
-}
-```
-
-**Error Response**:
-```json
-{
-  "success": false,
-  "error": "ERROR_CODE",
-  "message": "Human-readable error message",
-  "details": { /* error details */ }
+```typescript
+interface APIResponse<T> {
+  success: boolean
+  data?: T
+  error?: string
+  message?: string
 }
 ```
 
@@ -331,327 +205,284 @@ CREATE POLICY api_keys_user_isolation ON user_api_keys
 
 ## Frontend Architecture
 
-### Component Hierarchy
+### Route Structure
 
 ```
-App (Layout)
-├── RootLayout
-│   ├── Providers (React Query, Zustand)
-│   └── Navigation (Bottom Nav)
-├── AuthLayout
-│   ├── LoginPage
-│   └── SignupPage
-└── DashboardLayout
-    ├── Projects
-    │   ├── ProjectList
-    │   │   └── ProjectCard
-    │   ├── ProjectDetail
-    │   │   ├── Assets Tab
-    │   │   │   └── AssetGrid
-    │   │   ├── Generate Tab
-    │   │   │   └── GenerationForm
-    │   │   └── Analytics Tab
-    │   │       └── CostChart
-    │   └── CreateProject
-    ├── Generate (Quick)
-    │   └── GenerationForm
-    ├── Analytics (Global)
-    │   ├── CostChart
-    │   ├── ProviderComparison
-    │   └── UsageBreakdown
-    └── Settings
-        ├── APIKeys
-        ├── Providers
-        ├── Budgets
-        └── Profile
+app/
+├── (auth)/                    # Auth route group
+│   ├── login/page.tsx
+│   └── signup/page.tsx
+├── (dashboard)/               # Authenticated route group
+│   ├── layout.tsx             # Sidebar + main content
+│   ├── projects/
+│   │   ├── page.tsx           # Project list
+│   │   └── [id]/
+│   │       ├── page.tsx       # Project detail (Assets/Generate/Analytics tabs)
+│   │       └── generate/
+│   │           ├── page.tsx           # Server component
+│   │           └── generate-client.tsx # Client: form + history + type tabs
+│   ├── settings/page.tsx      # API key management
+│   └── analytics/page.tsx     # Usage analytics
+└── page.tsx                   # Landing page
 ```
 
-### State Management Strategy
+### Key Components
 
-**Zustand Stores**:
-- `uiStore`: UI state (modals, toasts, loading)
-- `generationStore`: Generation form state
-- `projectStore`: Selected project
+```
+components/
+├── generation/
+│   ├── generation-form.tsx       # Provider/model select, prompt, submit
+│   ├── generation-result.tsx     # Renders text/image/video/audio output
+│   ├── generation-history.tsx    # Lists all generations for a project
+│   └── parameter-controls.tsx    # Advanced settings (temp, tokens, etc.)
+├── projects/
+│   ├── project-card.tsx
+│   └── create-project-dialog.tsx
+├── layout/
+│   ├── sidebar.tsx
+│   └── mobile-nav.tsx
+└── ui/                           # shadcn/ui components
+```
 
-**React Query**:
-- `useProjects()`: Fetch/manage projects
-- `useAssets()`: Fetch/manage assets
-- `useGenerations()`: Fetch/manage generations
-- `useAnalytics()`: Fetch analytics data
+### React Query Hooks
+
+```
+hooks/
+├── use-generations.ts    # useGenerations, useCreateGeneration, useEstimateCost
+├── use-api-keys.ts       # useAPIKeys (fetches configured providers)
+├── use-projects.ts       # useProjects, useProject
+└── use-provider-models.ts  # (via use-generations.ts useProviderModels)
+```
 
 ---
 
 ## Security Architecture
 
-### Encryption Strategy
-
-**API Key Encryption Flow**:
+### API Key Encryption
 
 ```
-User API Key
-    ↓
-[Encrypt with AES-256-GCM]
-    ├─ Plaintext: User API Key
-    ├─ Key: Scrypt(MASTER_KEY, salt)
-    ├─ IV: Random 96-bit
-    └─ Output: ciphertext + authTag
-    ↓
-[Store in Database]
-    ├─ encrypted_key: Base64(ciphertext)
-    ├─ encryption_iv: Base64(IV)
-    ├─ encryption_salt: Base64(salt)
-    └─ Never store plaintext
-    ↓
-[Decrypt on API Call]
-    └─ Only in server-side API routes
-    └─ Never logged or exposed
+User API Key → Encrypt(AES-256-GCM, Scrypt(MASTER_KEY, salt), IV) → Store in DB
+                                                                        │
+Decrypt only in server-side API routes ←────────────────────────────────┘
 ```
 
-**Implementation Details**:
-- Master key: 32-byte random key stored in ENCRYPTION_MASTER_KEY env var
-- Salt: 64 random bytes generated per key
+- Master key: `ENCRYPTION_MASTER_KEY` env var (64 hex chars = 32 bytes)
+- Salt: 64 random bytes per key
 - IV: 96 random bits per encryption
-- Authentication tag: Validates ciphertext integrity
-- Never decrypt in browser (no client-side decryption)
+- Auth tag validates ciphertext integrity
+- Never decrypted in browser
 
-### Authentication Flow
+### Authentication
 
-```
-Client                  Server                  Supabase
-  │                       │                         │
-  ├──POST /auth/login────→│                         │
-  │ (email, password)     ├──Auth Request──────────→│
-  │                       │                         │
-  │                       │←──JWT Token──────────────┤
-  │                       │                         │
-  │←──JWT (httpOnly)──────┤                         │
-  │                       │                         │
-  ├──GET /api/protected──→│                         │
-  │ (JWT in header)       ├──Verify JWT──────────→│
-  │                       │                        │
-  │                       │←──Valid──────────────┤
-  │←──Response────────────┤                       │
+Cookie-based auth via `@supabase/ssr`:
+
+```typescript
+// Server-side (API routes, server components)
+import { getCurrentUser, createClient } from '@/lib/db/supabase-server'
+
+const user = await getCurrentUser()      // Auth check
+const supabase = await createClient()    // Client for DB queries (has auth session)
 ```
 
----
+```typescript
+// Browser-side (client components)
+import { createBrowserClient } from '@/lib/db/supabase-browser'
 
-## Cost Calculation System
-
-### Pricing Data Structure
-
-```javascript
-const pricingData = {
-  openai: {
-    'gpt-4o': {
-      textGeneration: {
-        inputTokens: 0.0000025,  // $0.0000025 per token
-        outputTokens: 0.00001    // $0.00001 per token
-      }
-    },
-    'dall-e-3': {
-      imageGeneration: {
-        '1024x1024': 20,    // 20 cents
-        '1792x1024': 25,    // 25 cents
-        '1024x1792': 25     // 25 cents
-      }
-    }
-  },
-  anthropic: {
-    'claude-3-5-sonnet': {
-      textGeneration: {
-        inputTokens: 0.000003,   // $0.000003 per input token
-        outputTokens: 0.000015   // $0.000015 per output token
-      }
-    }
-  }
-};
-```
-
-### Cost Estimation
-
-```
-1. User submits request
-   ├─ Provider: OpenAI (GPT-4o)
-   ├─ Model: text
-   └─ Prompt: "Write a poem about..."
-
-2. Estimate cost
-   ├─ Estimate prompt tokens: ~15
-   ├─ Estimate output tokens: ~50
-   ├─ Cost: (15 × $0.0000025) + (50 × $0.00001)
-   └─ Total estimate: ~$0.0005 (0.05 cents)
-
-3. Show to user
-   ├─ "This will cost approximately $0.0005"
-   └─ Allow generation
-
-4. Execute generation
-   └─ Track actual tokens from API response
-
-5. Calculate actual cost
-   ├─ Actual tokens: (input: 18, output: 47)
-   └─ Actual cost: (18 × $0.0000025) + (47 × $0.00001) = $0.000495
-
-6. Update database
-   ├─ Store in generations table
-   ├─ Update projects.spent_cents
-   └─ Trigger budget alert if needed
+const supabase = createBrowserClient()   // For client-side auth state
 ```
 
 ---
 
 ## Provider System
 
-### Provider Abstraction
+### Registered Providers
+
+| Provider | ID | Capabilities | Models |
+|----------|-----|-------------|--------|
+| OpenAI | `openai` | text, image | GPT-4o, DALL-E 3 |
+| Anthropic | `anthropic` | text | Claude 3.5 Sonnet |
+| Gemini | `gemini` | text, image, video | Gemini 2.5/3.0, Imagen 4, Veo 3.1/2.0 |
+| OpenRouter | `openrouter` | text, image | 400+ models via single key |
+| FAL | `fal` | image | Flux, Stable Diffusion |
+| Nano Banana | `nano-banana` | image | Nano Banana Pro |
+| Veo3 | `veo3` | video | Veo 3 (standalone) |
+
+### Provider Architecture
 
 ```typescript
+// Abstract base class
 abstract class BaseProvider {
-  abstract generateText(request: TextGenerationRequest): Promise<GenerationResponse>;
-  abstract generateImage(request: ImageGenerationRequest): Promise<GenerationResponse>;
-  abstract generateVideo(request: VideoGenerationRequest): Promise<GenerationResponse>;
-  abstract generateAudio(request: AudioGenerationRequest): Promise<GenerationResponse>;
-  abstract healthCheck(): Promise<ProviderHealth>;
-  abstract estimateCost(request: GenerationRequest): Promise<number>;
+  abstract generate(request: GenerationRequest): Promise<GenerationResult>
+  abstract getAvailableModels(): Promise<string[]>
+  abstract estimateCost(request: GenerationRequest): Promise<number>
+}
+
+// Factory pattern
+class ProviderFactory {
+  static createProvider(name: string, apiKey: string): BaseProvider
+  static getRegisteredProviders(): string[]
 }
 ```
 
-### Provider Router Logic
+### Provider Alias System
+
+Settings page stores provider names from user perspective (e.g., "google"), but the factory registers by internal ID (e.g., "gemini"):
+
+```typescript
+// web/src/lib/ai/provider-aliases.ts
+const PROVIDER_ALIASES = { google: 'gemini' }
+
+export function resolveProviderName(provider: string): string {
+  return PROVIDER_ALIASES[provider] || provider
+}
+```
+
+**Rule**: Use **raw** name for DB lookups (API keys stored as "google"), **resolved** name for `ProviderFactory.createProvider()`.
+
+### Gemini Provider Details
+
+The Gemini provider supports three generation methods:
+
+1. **Text** — `POST /v1beta/models/{model}:generateContent`
+2. **Imagen** — `POST /v1beta/models/{model}:predict` (Imagen 4 variants)
+3. **Gemini Image** — `POST /v1beta/models/{model}:generateContent` with `responseModalities: ['IMAGE', 'TEXT']`
+4. **Video (Veo)** — `POST /v1beta/models/{model}:predictLongRunning` with polling
+
+Dynamic model discovery: `GET /v1beta/models?key=...` filtered by prefixes `gemini`, `imagen`, `veo`.
+
+---
+
+## Generation Flow
 
 ```
-User requests generation
-    ↓
-Get user's enabled providers (sorted by priority)
-    ├─ Filter by capability (supports image generation?)
-    ├─ Filter by health status (not down?)
-    ├─ Filter by rate limits
-    └─ Filter by budget
-    ↓
-Try primary provider
-    ├─ Success? Return result
-    └─ Failure? Try fallback
-    ↓
-Try fallback provider
-    ├─ Success? Return result
-    └─ Failure? Return error
-    ↓
-Log result
-    ├─ Update provider health
-    ├─ Update cost tracking
-    └─ Create budget alerts if needed
+Client                    API Route                    Provider
+  │                          │                            │
+  ├─ POST /api/generate ────→│                            │
+  │                          ├─ Auth check                │
+  │                          ├─ Create DB record (pending)│
+  │←─ 202 Accepted ─────────┤                            │
+  │                          │                            │
+  │                     [Fire-and-forget async]           │
+  │                          ├─ Get API key (raw name)    │
+  │                          ├─ Decrypt API key           │
+  │                          ├─ Resolve provider alias    │
+  │                          ├─ Create provider instance  │
+  │                          ├─ Execute generation ──────→│
+  │                          │←─── Result ────────────────┤
+  │                          ├─ Update DB (completed)     │
+  │                          │                            │
+  │  [Polling every 2s]      │                            │
+  ├─ GET /api/generations ──→│                            │
+  │←─ Updated results ───────┤                            │
 ```
 
 ---
 
-## Deployment Architecture
+## Key Patterns
 
-### Production Stack
+### 1. Server-Side Supabase Client
 
-```
-┌──────────────────────────────────────┐
-│   Client (Browser/PWA)               │
-│   - Next.js Static Assets            │
-│   - Service Worker                   │
-│   - Offline Support                  │
-└──────────────────────────────────────┘
-           ↓ HTTPS
-┌──────────────────────────────────────┐
-│   Edge Layer (Vercel/CDN)            │
-│   - Route caching                    │
-│   - DDoS protection                  │
-│   - SSL termination                  │
-└──────────────────────────────────────┘
-           ↓
-┌──────────────────────────────────────┐
-│   Next.js Server (Vercel)            │
-│   - API routes                       │
-│   - Server-side rendering            │
-│   - Authentication middleware        │
-└──────────────────────────────────────┘
-           ↓
-┌──────────────────────────────────────┐
-│   Supabase (Self-Hosted or Cloud)   │
-│   - PostgreSQL Database              │
-│   - Auth Service                     │
-│   - Storage (S3-compatible)          │
-│   - Real-time subscriptions          │
-└──────────────────────────────────────┘
-           ↓
-┌──────────────────────────────────────┐
-│   External APIs                      │
-│   - OpenAI API                       │
-│   - Anthropic API                    │
-│   - FAL.ai API                       │
-│   - Others                           │
-└──────────────────────────────────────┘
+**Always** use the cookie-based server client in API routes:
+
+```typescript
+import { getCurrentUser, createClient } from '@/lib/db/supabase-server'
 ```
 
-### Environment Configuration
+**Never** use `@/lib/db/client` (browser singleton) in API routes — it has no auth session and RLS will block all operations.
 
+### 2. Query Functions Accept Supabase Client
+
+All database query functions take `supabase: SupabaseClient` as their first parameter:
+
+```typescript
+// ✅ Correct
+export async function getGenerations(supabase: SupabaseClient, projectId: string)
+export async function saveAPIKey(supabase: SupabaseClient, ...)
+
+// ❌ Wrong — importing global client
+import { supabase } from '@/lib/db/client'
 ```
-.env.local
-├── NEXT_PUBLIC_APP_URL=https://app.domain.com
-├── NEXT_PUBLIC_SUPABASE_URL=https://supabase.domain.com
-├── NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJ...
-├── SUPABASE_SERVICE_KEY=eyJ...
-├── ENCRYPTION_MASTER_KEY=randomly_generated_key
-├── NODE_ENV=production
-└── SENTRY_DSN=https://sentry.io/...
+
+### 3. Provider Alias Resolution
+
+Always resolve before calling ProviderFactory:
+
+```typescript
+import { resolveProviderName } from '@/lib/ai/provider-aliases'
+const provider = ProviderFactory.createProvider(resolveProviderName(rawName), apiKey)
 ```
 
 ---
 
-## Performance Targets
+## File Structure (Key Source Files)
 
-| Metric | Target | Notes |
-|--------|--------|-------|
-| FCP (First Contentful Paint) | < 1.5s | Essential for user perception |
-| LCP (Largest Contentful Paint) | < 2.5s | Main content visible |
-| CLS (Cumulative Layout Shift) | < 0.1 | Visual stability |
-| TTI (Time to Interactive) | < 3s | App is responsive |
-| Lighthouse Score | > 90 | Performance + Accessibility |
+```
+web/src/
+├── lib/
+│   ├── ai/
+│   │   ├── base-provider.ts          # Abstract provider class
+│   │   ├── provider-factory.ts       # Registry of all providers
+│   │   ├── provider-aliases.ts       # "google" → "gemini" mapping
+│   │   ├── provider-router.ts        # Routing with fallback
+│   │   └── providers/
+│   │       ├── openai.ts
+│   │       ├── anthropic.ts
+│   │       ├── gemini.ts             # Text + Imagen + Veo
+│   │       ├── openrouter.ts         # 400+ models
+│   │       ├── fal.ts
+│   │       ├── nano-banana.ts
+│   │       └── veo3.ts
+│   ├── crypto/
+│   │   └── api-key-manager.ts        # Encrypt/decrypt/CRUD (takes SupabaseClient)
+│   └── db/
+│       ├── supabase-server.ts        # Server client (cookie-based auth) ← USE THIS
+│       ├── supabase-browser.ts       # Browser client (@supabase/ssr)
+│       ├── client.ts                 # Legacy singleton (AVOID in API routes)
+│       └── queries/
+│           └── generations.ts        # Generation CRUD (takes SupabaseClient)
+├── components/generation/
+│   ├── generation-form.tsx           # Provider/model select, prompt, submit
+│   ├── generation-result.tsx         # Renders text/image/video/audio output
+│   ├── generation-history.tsx        # Lists all generations for a project
+│   └── parameter-controls.tsx        # Advanced settings
+├── hooks/
+│   ├── use-generations.ts            # React Query hooks for generations
+│   └── use-api-keys.ts              # React Query hooks for API keys
+└── app/
+    ├── api/
+    │   ├── generate/route.ts         # POST - create & execute generation
+    │   ├── generations/route.ts      # GET - list generations
+    │   ├── generations/stats/route.ts
+    │   ├── api-keys/route.ts         # GET/POST API keys
+    │   ├── api-keys/[id]/route.ts    # PUT/DELETE API keys
+    │   ├── estimate-cost/route.ts
+    │   └── providers/[provider]/models/route.ts
+    └── (dashboard)/
+        ├── settings/page.tsx         # API key management
+        └── projects/[id]/
+            ├── page.tsx              # Project home (Assets/Generate/Analytics)
+            └── generate/
+                ├── page.tsx          # Server component
+                └── generate-client.tsx  # Client: type tabs, form, history
+```
 
 ---
 
-## Scalability Considerations
+## Known Issues / Technical Debt
 
-### Database Scaling
-- Partitioning: generations table by user_id and date
-- Read replicas for analytics queries
-- Connection pooling (PgBouncer)
-
-### API Scaling
-- Horizontal scaling: Multiple Node.js instances
-- Load balancing: Vercel built-in
-- Rate limiting: Per-user and per-IP
-
-### File Storage Scaling
-- S3 bucket for asset storage
-- CloudFront CDN for asset delivery
-- Automatic cleanup for old assets
+1. **`@/lib/db/client.ts`** (browser singleton) may still be imported in some places — should be audited and replaced
+2. **`provider-selector.tsx`** is orphaned — no longer used by generation form
+3. **No Supabase Storage** for generated images — base64 stored directly in `generations.result`, inefficient for large images
+4. **Video generation polling** happens synchronously in the API route — could timeout for long Veo generations
+5. **`provider_configs` table** may not exist in all environments — `ProviderRouter` depends on it but `generate/route.ts` now bypasses it
 
 ---
 
-## Monitoring & Observability
+## Deployment
 
-### Metrics to Track
-- API response times
-- Error rates by endpoint
-- Provider health status
-- Cost tracking accuracy
-- User generation success rates
+- **Next.js 16.1.6** with Turbopack
+- **Node.js 18+**
+- **Supabase Cloud** (project: uaduokvobvkbremkfhki)
+- **Database**: PostgreSQL with RLS
 
-### Logging Strategy
-- Application logs: Sentry
-- Database logs: Supabase
-- API logs: Vercel Analytics
-- User events: PostHog or Mixpanel
-
----
-
-## Next Steps
-
-This architecture document will be expanded with implementation details as each phase is completed. Check back for updates on:
-- Detailed API endpoint specifications
-- Component implementation guides
-- Database query examples
-- Provider-specific integration details
+See [PRODUCTION_DEPLOYMENT.md](../PRODUCTION_DEPLOYMENT.md) and [SUPABASE_CLOUD_SETUP.md](../SUPABASE_CLOUD_SETUP.md) for setup guides.

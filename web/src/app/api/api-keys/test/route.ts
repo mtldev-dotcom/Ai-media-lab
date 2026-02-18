@@ -1,12 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getCurrentUser } from '@/lib/db/client'
+import { getCurrentUser, createClient } from '@/lib/db/supabase-server'
 import * as apiKeyManager from '@/lib/crypto/api-key-manager'
 import { z } from 'zod'
 import type { APIResponse } from '@/types'
 
 const TestAPIKeySchema = z.object({
   provider: z.string().min(1).max(50),
-  // Either test a stored key by ID or a new key directly
   keyId: z.string().optional(),
   apiKey: z.string().optional(),
 })
@@ -35,19 +34,16 @@ export async function POST(request: NextRequest) {
 
     let apiKeyToTest: string
 
-    // If keyId is provided, decrypt the stored key
     if (validatedData.keyId) {
+      const supabase = await createClient()
       apiKeyToTest = await apiKeyManager.getDecryptedAPIKey(
+        supabase,
         validatedData.keyId,
         user.id
       )
-    }
-    // If apiKey is provided directly, use it
-    else if (validatedData.apiKey) {
+    } else if (validatedData.apiKey) {
       apiKeyToTest = validatedData.apiKey
-    }
-    // Must provide either keyId or apiKey
-    else {
+    } else {
       return NextResponse.json<APIResponse<null>>(
         {
           success: false,
@@ -58,7 +54,6 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Test the API key
     const testResult = await apiKeyManager.testAPIKey(
       validatedData.provider,
       apiKeyToTest
@@ -84,18 +79,15 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Handle specific error cases
-    if (error instanceof Error) {
-      if (error.message.includes('not found')) {
-        return NextResponse.json<APIResponse<null>>(
-          {
-            success: false,
-            error: 'NOT_FOUND',
-            message: error.message,
-          },
-          { status: 404 }
-        )
-      }
+    if (error instanceof Error && error.message.includes('not found')) {
+      return NextResponse.json<APIResponse<null>>(
+        {
+          success: false,
+          error: 'NOT_FOUND',
+          message: error.message,
+        },
+        { status: 404 }
+      )
     }
 
     console.error('[POST /api/api-keys/test] Error:', error)

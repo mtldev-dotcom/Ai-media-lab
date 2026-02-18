@@ -1,7 +1,7 @@
 'use client'
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { getCurrentUser } from '@/lib/db/client'
+import { createClient } from '@/lib/db/supabase-browser'
 import * as projectQueries from '@/lib/db/queries/projects'
 import type { Project, CreateProjectInput, UpdateProjectInput } from '@/types'
 
@@ -14,11 +14,12 @@ export function useProjects() {
   return useQuery({
     queryKey: PROJECTS_QUERY_KEY,
     queryFn: async () => {
-      const user = await getCurrentUser()
+      const supabase = createClient()
+      const { data: { user } } = await supabase.auth.getUser()
       if (!user) {
         throw new Error('Not authenticated')
       }
-      return projectQueries.getProjects(user.id)
+      return projectQueries.getProjects(user.id, supabase)
     },
     enabled: true,
   })
@@ -30,7 +31,10 @@ export function useProjects() {
 export function useProject(projectId: string) {
   return useQuery({
     queryKey: ['projects', projectId],
-    queryFn: () => projectQueries.getProject(projectId),
+    queryFn: () => {
+      const supabase = createClient()
+      return projectQueries.getProject(projectId, supabase)
+    },
     enabled: !!projectId,
   })
 }
@@ -43,11 +47,12 @@ export function useCreateProject() {
 
   return useMutation({
     mutationFn: async (input: CreateProjectInput) => {
-      const user = await getCurrentUser()
+      const supabase = createClient()
+      const { data: { user } } = await supabase.auth.getUser()
       if (!user) {
         throw new Error('Not authenticated')
       }
-      return projectQueries.createProject(user.id, input)
+      return projectQueries.createProject(user.id, input, supabase)
     },
     onSuccess: (newProject) => {
       // Update the projects list
@@ -66,8 +71,10 @@ export function useUpdateProject() {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: ({ projectId, input }: { projectId: string; input: UpdateProjectInput }) =>
-      projectQueries.updateProject(projectId, input),
+    mutationFn: ({ projectId, input }: { projectId: string; input: UpdateProjectInput }) => {
+      const supabase = createClient()
+      return projectQueries.updateProject(projectId, input, supabase)
+    },
     onSuccess: (updatedProject) => {
       // Update the specific project
       queryClient.setQueryData(['projects', updatedProject.id], updatedProject)
@@ -88,7 +95,10 @@ export function useDeleteProject() {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: (projectId: string) => projectQueries.deleteProject(projectId),
+    mutationFn: (projectId: string) => {
+      const supabase = createClient()
+      return projectQueries.deleteProject(projectId, supabase)
+    },
     onSuccess: (deletedProject) => {
       // Remove from projects list
       queryClient.setQueryData(PROJECTS_QUERY_KEY, (oldData: Project[] | undefined) => {
@@ -108,7 +118,10 @@ export function useDeleteProject() {
 export function useProjectStats(projectId: string) {
   return useQuery({
     queryKey: ['projects', projectId, 'stats'],
-    queryFn: () => projectQueries.getProjectStats(projectId),
+    queryFn: () => {
+      const supabase = createClient()
+      return projectQueries.getProjectStats(projectId, supabase)
+    },
     enabled: !!projectId,
   })
 }
@@ -120,11 +133,12 @@ export function useSearchProjects(query: string) {
   return useQuery({
     queryKey: ['projects', 'search', query],
     queryFn: async () => {
-      const user = await getCurrentUser()
+      const supabase = createClient()
+      const { data: { user } } = await supabase.auth.getUser()
       if (!user) {
         throw new Error('Not authenticated')
       }
-      return projectQueries.searchProjects(user.id, query)
+      return projectQueries.searchProjects(user.id, query, supabase)
     },
     enabled: !!query,
   })

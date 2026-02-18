@@ -3,11 +3,12 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { supabase } from '@/lib/db/client'
+import { createClient } from '@/lib/db/supabase-browser'
 import { Zap } from 'lucide-react'
 
 export default function SignupPage() {
   const router = useRouter()
+  const supabase = createClient()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
@@ -32,7 +33,7 @@ export default function SignupPage() {
     setLoading(true)
 
     try {
-      const { error: signUpError } = await supabase.auth.signUp({
+      const { data, error: signUpError } = await supabase.auth.signUp({
         email,
         password,
       })
@@ -42,9 +43,8 @@ export default function SignupPage() {
         return
       }
 
-      // After successful signup, redirect to projects
-      // In a real app, you might want to show a confirmation message first
-      router.push('/projects')
+      // Redirect to projects page
+      window.location.replace('/projects')
     } catch (err) {
       setError('An error occurred. Please try again.')
       console.error(err)

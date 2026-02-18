@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getCurrentUser } from '@/lib/db/client'
+import { getCurrentUser } from '@/lib/db/supabase-server'
 import * as projectQueries from '@/lib/db/queries/projects'
 import { z } from 'zod'
 import type { APIResponse } from '@/types'

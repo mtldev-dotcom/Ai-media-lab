@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getCurrentUser } from '@/lib/db/client'
+import { getCurrentUser, createClient } from '@/lib/db/supabase-server'
 import * as apiKeyManager from '@/lib/crypto/api-key-manager'
 import { z } from 'zod'
 import type { APIResponse, APIKeyWithoutSecret } from '@/types'
@@ -30,7 +30,8 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    const keys = await apiKeyManager.getUserAPIKeys(user.id)
+    const supabase = await createClient()
+    const keys = await apiKeyManager.getUserAPIKeys(supabase, user.id)
 
     return NextResponse.json<APIResponse<APIKeyWithoutSecret[]>>({
       success: true,
@@ -75,7 +76,9 @@ export async function POST(request: NextRequest) {
     const validatedData = AddAPIKeySchema.parse(body)
 
     // Store the encrypted API key
+    const supabase = await createClient()
     const storedKey = await apiKeyManager.storeAPIKey(
+      supabase,
       user.id,
       validatedData.provider,
       validatedData.apiKey,

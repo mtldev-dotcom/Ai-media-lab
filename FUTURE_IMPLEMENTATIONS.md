@@ -6,6 +6,8 @@ Detailed roadmap for all planned phases and features.
 
 This document outlines the future implementation roadmap for AI Media Creation Workspace. Current status: **Phase 5 Complete** (Generation UI & Basic Generation).
 
+> **Note**: Video generation (Veo 3.1/2.0) and image generation (Imagen 4, Gemini Image) are already working via the Gemini provider. Phase 8 below covers additional providers (ElevenLabs for audio, Replicate) and enhanced UI for these media types.
+
 ---
 
 ## Phase 6: Asset Management (Next)
@@ -226,20 +228,16 @@ POST   /api/analytics/report/[period]              # Generate report
 
 ---
 
-## Phase 8: Video & Audio Generation
+## Phase 8: Audio Generation & Enhanced Media UI
 
 **Duration**: 2 weeks
-**Goal**: Support video and audio content creation
+**Goal**: Add audio generation and improve video/image generation UX
+
+> **Already implemented**: Text generation (OpenAI, Anthropic, Gemini), Image generation (Imagen 4, Gemini Image, DALL-E 3, Flux), Video generation (Veo 3.1, Veo 2.0) — all via 7 registered providers.
 
 ### New Providers to Add
 
-#### 8.1 Runway (Veo3)
-- Already implemented in provider system
-- Add to provider configuration UI
-- Support 4-120 second videos
-- Handle video encoding/transcoding
-
-#### 8.2 ElevenLabs (Audio)
+#### 8.1 ElevenLabs (Audio)
 ```typescript
 // /src/lib/ai/providers/elevenlabs.ts
 - Support text-to-speech
@@ -258,13 +256,13 @@ POST   /api/analytics/report/[period]              # Generate report
 
 ### Features to Implement
 
-#### 8.1 Video Generation UI
-- [ ] Video prompt input (longer descriptions)
-- [ ] Duration selector (4-120 seconds)
-- [ ] Resolution selector (576x576, 1024x1024)
+#### 8.1 Enhanced Video Generation UI
+- [x] Basic video generation via Veo 3.1/2.0 (Gemini provider)
+- [ ] Duration selector UI (4-120 seconds)
+- [ ] Resolution selector UI (576x576, 1024x1024)
 - [ ] Style/effect selection
 - [ ] Preview of similar examples
-- [ ] Cost estimation for duration/resolution
+- [ ] Enhanced cost estimation for duration/resolution
 
 #### 8.2 Audio Generation UI
 - [ ] Text input for TTS
@@ -292,7 +290,7 @@ POST   /api/analytics/report/[period]              # Generate report
 
 #### 8.5 Database Updates
 ```sql
--- Track async jobs
+-- Track async jobs (for progress tracking)
 CREATE TABLE async_jobs (
   id UUID PRIMARY KEY,
   generation_id UUID REFERENCES generations(id),
@@ -302,43 +300,36 @@ CREATE TABLE async_jobs (
   started_at TIMESTAMP,
   completed_at TIMESTAMP
 );
-
--- Video/audio metadata
-ALTER TABLE assets ADD COLUMN duration_seconds DECIMAL;
-ALTER TABLE assets ADD COLUMN bitrate_kbps INTEGER;
-ALTER TABLE assets ADD COLUMN resolution VARCHAR(50);
 ```
 
-#### 8.6 API Endpoints
+> **Note**: Video/audio generation already uses the existing `POST /api/generate` endpoint with `generationType: 'video'` or `'audio'`. The Gemini provider handles Veo polling internally.
+
+#### 8.6 Additional API Endpoints
 ```
-POST   /api/generate/video                        # Start video generation
-POST   /api/generate/audio                        # Start audio generation
-GET    /api/jobs/[id]/status                      # Check job status
+GET    /api/jobs/[id]/status                      # Check async job progress
 POST   /api/jobs/[id]/cancel                      # Cancel async job
 ```
 
 #### 8.7 React Hooks
-- [ ] `useGenerateVideo()` - Video generation
-- [ ] `useGenerateAudio()` - Audio generation
-- [ ] `useAsyncJobStatus(jobId)` - Poll job status
+- [x] `useCreateGeneration()` - Already handles all types (text/image/video/audio)
+- [ ] `useAsyncJobStatus(jobId)` - Poll job progress percentage
 - [ ] `useCancelAsyncJob()` - Cancel running job
 
 #### 8.8 UI Components
-- [ ] Video generation form
-- [ ] Audio generation form
+- [x] Video result display (`<video>` player in generation-result.tsx)
+- [x] Audio result display (`<audio>` player in generation-result.tsx)
+- [ ] Audio generation form (voice selection, language, speed)
 - [ ] Progress bar with percentage
-- [ ] Job status indicator
 - [ ] Cancel button
 - [ ] Estimated time display
-- [ ] Video/audio preview player
 
 ### Success Criteria
 
-- ✅ Generate 4-120 second videos
+- ✅ Generate 4-120 second videos (**done via Veo**)
 - ✅ Generate audio from text
 - ✅ Show generation progress
-- ✅ Handle long-running tasks
-- ✅ Preview generated media
+- ✅ Handle long-running tasks (**done — polling in Gemini provider**)
+- ✅ Preview generated media (**done — generation-result.tsx**)
 - ✅ Accurate cost calculation
 
 ---
@@ -735,13 +726,15 @@ GET    /api/conversions?projectId=...             # List conversions
 
 ## Key Decisions Made
 
-1. **Self-hosted Supabase**: Full control, data privacy, cost efficiency
+1. **Supabase Cloud**: Managed PostgreSQL with Auth, RLS, and Storage
 2. **AES-256-GCM Encryption**: Industry standard for API key protection
-3. **Multi-provider Architecture**: No vendor lock-in, user choice
+3. **Multi-provider Architecture**: 7 providers, no vendor lock-in, user choice
 4. **Mobile-first Design**: Growing mobile usage, better UX
 5. **Transparent Pricing**: All costs visible immediately
 6. **PWA instead of Native**: Cross-platform, easier updates
-7. **Next.js 15**: Modern, full-stack, great DX
+7. **Next.js 16**: Modern, full-stack, great DX with Turbopack
+8. **Cookie-based Auth**: `@supabase/ssr` for reliable server-side authentication
+9. **Provider Alias System**: Decouples user-facing names from internal provider IDs
 
 ---
 
@@ -769,6 +762,6 @@ To contribute to future phases:
 
 ---
 
-**Last Updated**: 2026-02-15
+**Last Updated**: 2026-02-17
 **Status**: Phase 5 Complete, Phase 6 Next
 **Maintainer**: Development Team

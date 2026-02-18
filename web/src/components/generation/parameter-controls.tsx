@@ -1,12 +1,25 @@
 'use client'
 
 import { useState } from 'react'
-import { ChevronDown } from 'lucide-react'
+import { ChevronDown, Settings2 } from 'lucide-react'
+import { cn } from '@/lib/utils'
 
 interface ParameterControlsProps {
   parameters: Record<string, any>
   onChange: (parameters: Record<string, any>) => void
   generationType: 'text' | 'image' | 'video' | 'audio'
+}
+
+interface ParamConfig {
+  key: string
+  label: string
+  type: 'select' | 'range' | 'number'
+  options?: string[]
+  min?: number
+  max?: number
+  step?: number
+  default: any
+  help?: string
 }
 
 export function ParameterControls({
@@ -20,8 +33,7 @@ export function ParameterControls({
     onChange({ ...parameters, [key]: value })
   }
 
-  // Different parameters for different generation types
-  const getParameters = () => {
+  const getParameters = (): ParamConfig[] => {
     if (generationType === 'image') {
       return [
         {
@@ -48,7 +60,6 @@ export function ParameterControls({
       ]
     }
 
-    // Text generation parameters
     return [
       {
         key: 'temperature',
@@ -85,40 +96,51 @@ export function ParameterControls({
   const params = getParameters()
 
   return (
-    <div className="border border-gray-200 rounded-lg">
+    <div className="border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden">
       <button
+        type="button"
         onClick={() => setExpanded(!expanded)}
-        className="w-full px-4 py-3 flex items-center justify-between hover:bg-gray-50 transition-colors"
+        className="w-full px-4 py-3 flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors"
       >
-        <span className="text-sm font-medium text-gray-700">Advanced Settings</span>
+        <div className="flex items-center gap-2">
+          <Settings2 className="w-4 h-4 text-slate-500 dark:text-slate-400" />
+          <span className="text-sm font-medium text-slate-700 dark:text-slate-300">
+            Advanced Settings
+          </span>
+        </div>
         <ChevronDown
-          className={`w-4 h-4 text-gray-500 transition-transform ${
-            expanded ? 'transform rotate-180' : ''
-          }`}
+          className={cn(
+            'w-4 h-4 text-slate-400 transition-transform',
+            expanded && 'rotate-180'
+          )}
         />
       </button>
 
       {expanded && (
-        <div className="border-t border-gray-200 px-4 py-4 space-y-4 bg-gray-50">
+        <div className="border-t border-slate-200 dark:border-slate-700 px-4 py-4 space-y-4 bg-slate-50 dark:bg-slate-800/30">
           {params.map((param) => (
             <div key={param.key}>
               <div className="flex items-center justify-between mb-2">
-                <label className="text-sm font-medium text-gray-700">{param.label}</label>
+                <label className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                  {param.label}
+                </label>
                 {param.type === 'range' && (
-                  <span className="text-xs text-gray-500">
-                    {(parameters[param.key] ?? param.default).toFixed(2)}
+                  <span className="text-xs font-mono text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded">
+                    {(parameters[param.key] ?? param.default).toFixed(param.step && param.step < 0.1 ? 2 : 1)}
                   </span>
                 )}
                 {param.type === 'number' && (
-                  <span className="text-xs text-gray-500">{parameters[param.key] ?? param.default}</span>
+                  <span className="text-xs font-mono text-slate-500 dark:text-slate-400">
+                    {parameters[param.key] ?? param.default}
+                  </span>
                 )}
               </div>
 
-              {param.type === 'select' && 'options' in param && (
+              {param.type === 'select' && param.options && (
                 <select
                   value={parameters[param.key] ?? param.default}
                   onChange={(e) => handleChange(param.key, e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                  className="w-full px-3 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
                   {param.options.map((option) => (
                     <option key={option} value={option}>
@@ -128,7 +150,7 @@ export function ParameterControls({
                 </select>
               )}
 
-              {param.type === 'range' && 'min' in param && (
+              {param.type === 'range' && param.min !== undefined && (
                 <input
                   type="range"
                   min={param.min}
@@ -136,22 +158,24 @@ export function ParameterControls({
                   step={param.step}
                   value={parameters[param.key] ?? param.default}
                   onChange={(e) => handleChange(param.key, parseFloat(e.target.value))}
-                  className="w-full"
+                  className="w-full accent-blue-600"
                 />
               )}
 
-              {param.type === 'number' && 'min' in param && (
+              {param.type === 'number' && param.min !== undefined && (
                 <input
                   type="number"
                   min={param.min}
                   max={param.max}
                   value={parameters[param.key] ?? param.default}
                   onChange={(e) => handleChange(param.key, parseInt(e.target.value))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                  className="w-full px-3 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               )}
 
-              {'help' in param && param.help && <p className="text-xs text-gray-500 mt-1">{param.help}</p>}
+              {param.help && (
+                <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">{param.help}</p>
+              )}
             </div>
           ))}
         </div>

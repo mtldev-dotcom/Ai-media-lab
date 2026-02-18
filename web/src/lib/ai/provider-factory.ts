@@ -10,6 +10,7 @@ import { FALProvider } from './providers/fal'
 import { GeminiProvider } from './providers/gemini'
 import { NanoBananaProvider } from './providers/nano-banana'
 import { Veo3Provider } from './providers/veo3'
+import { OpenRouterProvider } from './providers/openrouter'
 
 export type ProviderName = 'openai' | 'anthropic' | 'fal' | 'gemini' | 'nano-banana' | 'veo3' | 'openrouter' | 'elevenlabs'
 
@@ -26,6 +27,7 @@ export class ProviderFactory {
     ProviderFactory.providers.set('gemini', GeminiProvider as any)
     ProviderFactory.providers.set('nano-banana', NanoBananaProvider as any)
     ProviderFactory.providers.set('veo3', Veo3Provider as any)
+    ProviderFactory.providers.set('openrouter', OpenRouterProvider as any)
   }
 
   /**
